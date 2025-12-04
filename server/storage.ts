@@ -7,7 +7,7 @@ import {
   jobs, swipes, users, resumes, applications 
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, notInArray, desc, ilike, or, and, gte, lte, sql } from "drizzle-orm";
+import { eq, notInArray, inArray, desc, ilike, or, and, gte, lte, sql } from "drizzle-orm";
 
 export interface JobFilters {
   company?: string;
@@ -93,9 +93,39 @@ export class DbStorage implements IStorage {
       }
       
       if (filters.salaryRange && filters.salaryRange !== 'all') {
-        // Parse salary range filter
-        // Salary format: "150–200k" or "300–400k"
-        // We'll filter based on the lower bound of the salary range
+        const allJobs = await db.select().from(jobs);
+        const matchingJobIds: number[] = [];
+        
+        for (const job of allJobs) {
+          const salary = job.salary;
+          const match = salary.match(/(\d+)/);
+          if (match) {
+            const lowerBound = parseInt(match[1]);
+            let matches = false;
+            
+            switch (filters.salaryRange) {
+              case 'under150':
+                matches = lowerBound < 150;
+                break;
+              case '150-200':
+                matches = lowerBound >= 150 && lowerBound <= 200;
+                break;
+              case '200plus':
+                matches = lowerBound >= 200;
+                break;
+            }
+            
+            if (matches) {
+              matchingJobIds.push(job.id);
+            }
+          }
+        }
+        
+        if (matchingJobIds.length > 0) {
+          conditions.push(inArray(jobs.id, matchingJobIds));
+        } else {
+          conditions.push(eq(jobs.id, -1));
+        }
       }
     }
     
