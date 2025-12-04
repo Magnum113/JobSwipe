@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertJobSchema, insertSwipeSchema, insertApplicationSchema, type Job } from "@shared/schema";
 import { z } from "zod";
+import { generateCoverLetter } from "./openrouter";
 
 const SEED_JOBS = [
   {
@@ -237,6 +238,23 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching applications:", error);
       res.status(500).json({ error: "Failed to fetch applications" });
+    }
+  });
+
+  // Generate cover letter using AI
+  app.post("/api/cover-letter/generate", async (req, res) => {
+    try {
+      const { resume, vacancy } = req.body;
+      
+      if (!vacancy || typeof vacancy !== "object") {
+        return res.status(400).json({ error: "Vacancy object is required" });
+      }
+      
+      const coverLetter = await generateCoverLetter(resume || "", vacancy as Job);
+      res.json({ coverLetter });
+    } catch (error) {
+      console.error("Error generating cover letter:", error);
+      res.status(500).json({ error: "Failed to generate cover letter" });
     }
   });
 

@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { VacancyCard } from "@/components/VacancyCard";
 import { AnimatePresence } from "framer-motion";
-import { X, Heart, RotateCcw, Briefcase } from "lucide-react";
+import { X, Heart, RotateCcw, Briefcase, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { generateCoverLetter } from "@/lib/coverLetter";
+import { useToast } from "@/hooks/use-toast";
 import type { Job, Resume } from "@shared/schema";
 
 async function fetchUnswipedJobs(): Promise<Job[]> {
@@ -35,6 +35,19 @@ async function recordSwipe(jobId: number, direction: "left" | "right") {
   return response.json();
 }
 
+async function generateCoverLetter(resume: string, vacancy: Job): Promise<string> {
+  const response = await fetch("/api/cover-letter/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ resume, vacancy }),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to generate cover letter");
+  }
+  const data = await response.json();
+  return data.coverLetter;
+}
+
 async function createApplication(data: {
   jobId: number;
   jobTitle: string;
@@ -55,6 +68,8 @@ async function createApplication(data: {
 
 export default function VacanciesPage() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [isGenerating, setIsGenerating] = useState(false);
   
   const { data: jobs = [], isLoading: jobsLoading } = useQuery({
     queryKey: ["jobs", "unswiped"],
@@ -87,25 +102,43 @@ export default function VacanciesPage() {
   const currentJobs = jobs.slice(currentIndex);
 
   const handleSwipe = async (direction: "left" | "right") => {
-    if (currentJobs.length === 0) return;
+    if (currentJobs.length === 0 || isGenerating) return;
 
     const currentJob = currentJobs[0];
     
     // Record the swipe
     swipeMutation.mutate({ jobId: currentJob.id, direction });
     
-    // If swiped right, create application with cover letter
+    // If swiped right, generate cover letter with AI and create application
     if (direction === "right") {
-      const resumeContent = resume?.content || "";
-      const coverLetter = generateCoverLetter(resumeContent, currentJob);
+      setIsGenerating(true);
       
-      applicationMutation.mutate({
-        jobId: currentJob.id,
-        jobTitle: currentJob.title,
-        company: currentJob.company,
-        coverLetter,
-        status: "Отклик отправлен",
-      });
+      try {
+        const resumeContent = resume?.content || "";
+        const coverLetter = await generateCoverLetter(resumeContent, currentJob);
+        
+        await applicationMutation.mutateAsync({
+          jobId: currentJob.id,
+          jobTitle: currentJob.title,
+          company: currentJob.company,
+          coverLetter,
+          status: "Отклик отправлен",
+        });
+        
+        toast({
+          title: "Отклик отправлен!",
+          description: `Сопроводительное письмо для ${currentJob.company} сгенерировано`,
+        });
+      } catch (error) {
+        console.error("Error creating application:", error);
+        toast({
+          title: "Ошибка",
+          description: "Не удалось создать отклик",
+          variant: "destructive",
+        });
+      } finally {
+        setIsGenerating(false);
+      }
     }
     
     setHistory([...history, currentIndex]);
@@ -152,6 +185,14 @@ export default function VacanciesPage() {
          <p className="text-gray-500 font-medium text-sm">Свайпни вправо, чтобы откликнуться</p>
       </header>
 
+      {/* Generating indicator */}
+      {isGenerating && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white/95 backdrop-blur-sm p-6 rounded-2xl shadow-xl flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+          <p className="text-gray-700 font-medium">Генерируем сопроводительное...</p>
+        </div>
+      )}
+
       <div className="relative w-full max-w-[400px] h-[500px] flex justify-center z-20 px-4">
         <AnimatePresence>
           {currentJobs.map((job, index) => {
@@ -174,7 +215,7 @@ export default function VacanciesPage() {
                   <VacancyCard 
                     job={job} 
                     onSwipe={handleSwipe} 
-                    active={isTop}
+                    active={isTop && !isGenerating}
                   />
                </div>
              );
@@ -207,7 +248,7 @@ export default function VacanciesPage() {
           variant="outline"
           className="h-14 w-14 rounded-full border-2 border-red-100 bg-white text-red-500 shadow-lg hover:bg-red-50 hover:border-red-200 transition-all hover:scale-110"
           onClick={() => currentJobs.length > 0 && handleSwipe("left")}
-          disabled={currentJobs.length === 0}
+          disabled={currentJobs.length === 0 || isGenerating}
           data-testid="button-nope"
         >
           <X className="h-6 w-6" strokeWidth={3} />
@@ -218,7 +259,7 @@ export default function VacanciesPage() {
            variant="secondary"
            className="h-10 w-10 rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 shadow-md transition-all hover:scale-105"
            onClick={handleUndo}
-           disabled={history.length === 0}
+           disabled={history.length === 0 || isGenerating}
            data-testid="button-undo"
         >
            <RotateCcw className="h-4 w-4" />
@@ -229,7 +270,7 @@ export default function VacanciesPage() {
           variant="outline"
           className="h-14 w-14 rounded-full border-2 border-green-100 bg-white text-green-500 shadow-lg hover:bg-green-50 hover:border-green-200 transition-all hover:scale-110"
           onClick={() => currentJobs.length > 0 && handleSwipe("right")}
-          disabled={currentJobs.length === 0}
+          disabled={currentJobs.length === 0 || isGenerating}
           data-testid="button-like"
         >
           <Heart className="h-6 w-6" strokeWidth={3} fill="currentColor" />
