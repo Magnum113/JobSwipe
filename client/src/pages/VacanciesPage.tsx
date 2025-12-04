@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { VacancyCard } from "@/components/VacancyCard";
+import { VacancyFullView } from "@/components/VacancyFullView";
 import { AnimatePresence } from "framer-motion";
 import { X, Heart, RotateCcw, Briefcase, Loader2, Filter, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -117,6 +118,7 @@ export default function VacanciesPage() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [history, setHistory] = useState<number[]>([]);
+  const [expandedVacancy, setExpandedVacancy] = useState<Job | null>(null);
   
   const [filters, setFilters] = useState<Filters>({
     company: "all",
@@ -163,50 +165,59 @@ export default function VacanciesPage() {
 
   const currentJobs = jobs.slice(currentIndex);
 
+  const applyToJob = async (job: Job) => {
+    setIsGenerating(true);
+    
+    try {
+      const resumeContent = resume?.content || "";
+      const coverLetter = await generateCoverLetter(resumeContent, job);
+      
+      await applicationMutation.mutateAsync({
+        jobId: job.id,
+        jobTitle: job.title,
+        company: job.company,
+        coverLetter,
+        status: "Отклик отправлен",
+      });
+      
+      swipeMutation.mutate({ jobId: job.id, direction: "right" });
+      
+      toast({
+        title: "Отклик отправлен!",
+        description: `Сопроводительное письмо для ${job.company} сгенерировано`,
+      });
+      
+      setExpandedVacancy(null);
+      setHistory([...history, currentIndex]);
+      setCurrentIndex(currentIndex + 1);
+    } catch (error) {
+      console.error("Error creating application:", error);
+      toast({
+        title: "Ошибка",
+        description: "Не удалось создать отклик",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const handleSwipe = async (direction: "left" | "right") => {
-    if (currentJobs.length === 0 || isGenerating) return;
+    if (currentJobs.length === 0 || isGenerating || expandedVacancy) return;
 
     const currentJob = currentJobs[0];
     
-    swipeMutation.mutate({ jobId: currentJob.id, direction });
-    
     if (direction === "right") {
-      setIsGenerating(true);
-      
-      try {
-        const resumeContent = resume?.content || "";
-        const coverLetter = await generateCoverLetter(resumeContent, currentJob);
-        
-        await applicationMutation.mutateAsync({
-          jobId: currentJob.id,
-          jobTitle: currentJob.title,
-          company: currentJob.company,
-          coverLetter,
-          status: "Отклик отправлен",
-        });
-        
-        toast({
-          title: "Отклик отправлен!",
-          description: `Сопроводительное письмо для ${currentJob.company} сгенерировано`,
-        });
-      } catch (error) {
-        console.error("Error creating application:", error);
-        toast({
-          title: "Ошибка",
-          description: "Не удалось создать отклик",
-          variant: "destructive",
-        });
-      } finally {
-        setIsGenerating(false);
-      }
+      await applyToJob(currentJob);
+    } else {
+      swipeMutation.mutate({ jobId: currentJob.id, direction });
+      setHistory([...history, currentIndex]);
+      setCurrentIndex(currentIndex + 1);
     }
-    
-    setHistory([...history, currentIndex]);
-    setCurrentIndex(currentIndex + 1);
   };
 
   const handleUndo = () => {
-    if (history.length === 0) return;
+    if (history.length === 0 || expandedVacancy) return;
     const previousIndex = history[history.length - 1];
     setHistory(history.slice(0, -1));
     setCurrentIndex(previousIndex);
@@ -251,18 +262,19 @@ export default function VacanciesPage() {
 
   return (
     <div className="flex flex-col h-full relative overflow-hidden">
-      {/* Decorative background elements */}
-      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-        <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-blue-200/20 blur-3xl" />
-        <div className="absolute top-[40%] -right-[10%] w-[40%] h-[60%] rounded-full bg-indigo-200/20 blur-3xl" />
+      {/* Decorative background */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-[30%] -left-[20%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-blue-100/40 to-indigo-100/40 blur-3xl" />
+        <div className="absolute top-[30%] -right-[20%] w-[50%] h-[70%] rounded-full bg-gradient-to-br from-purple-100/30 to-pink-100/30 blur-3xl" />
+        <div className="absolute -bottom-[20%] left-[20%] w-[40%] h-[40%] rounded-full bg-gradient-to-br from-indigo-100/20 to-blue-100/20 blur-3xl" />
       </div>
 
-      {/* Header with filter button */}
-      <header className="relative z-30 px-4 pt-4 pb-2 shrink-0">
+      {/* Header */}
+      <header className="relative z-20 px-4 pt-4 pb-2 shrink-0">
         <div className="flex items-center justify-between max-w-lg mx-auto">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-white rounded-xl shadow-sm">
-              <Briefcase className="w-5 h-5 text-indigo-600" />
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl shadow-lg shadow-indigo-500/20">
+              <Briefcase className="w-5 h-5 text-white" />
             </div>
             <div>
               <h1 className="font-bold text-gray-900">Подбор вакансий</h1>
@@ -273,7 +285,7 @@ export default function VacanciesPage() {
             variant={isFilterOpen ? "default" : "outline"}
             size="sm"
             onClick={() => setIsFilterOpen(!isFilterOpen)}
-            className={`rounded-full gap-2 ${isFilterOpen ? "bg-indigo-600" : ""} ${hasActiveFilters && !isFilterOpen ? "border-indigo-300 bg-indigo-50" : ""}`}
+            className={`rounded-full gap-2 transition-all ${isFilterOpen ? "bg-indigo-600 shadow-lg shadow-indigo-500/30" : "bg-white shadow-md"} ${hasActiveFilters && !isFilterOpen ? "border-indigo-300 bg-indigo-50" : ""}`}
             data-testid="button-toggle-filter"
           >
             <Filter className="w-4 h-4" />
@@ -287,8 +299,8 @@ export default function VacanciesPage() {
 
       {/* Filter panel */}
       {isFilterOpen && (
-        <div className="relative z-30 px-4 pb-3 shrink-0">
-          <div className="max-w-lg mx-auto bg-white rounded-2xl shadow-lg p-4 space-y-3 border border-gray-100">
+        <div className="relative z-20 px-4 pb-3 shrink-0">
+          <div className="max-w-lg mx-auto bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl shadow-gray-900/5 p-4 space-y-3 border border-white/50">
             {/* Keyword search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -296,7 +308,7 @@ export default function VacanciesPage() {
                 placeholder="Поиск по ключевым словам..."
                 value={filters.keyword}
                 onChange={(e) => updateFilter("keyword", e.target.value)}
-                className="pl-9 rounded-xl border-gray-200 bg-white"
+                className="pl-9 rounded-xl border-gray-200/80 bg-white/80 shadow-sm focus:bg-white h-11"
                 data-testid="input-filter-keyword"
               />
             </div>
@@ -304,15 +316,15 @@ export default function VacanciesPage() {
             <div className="grid grid-cols-2 gap-3">
               {/* Company filter */}
               <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">Компания</label>
+                <label className="text-xs font-semibold text-gray-500 mb-1.5 block uppercase tracking-wide">Компания</label>
                 <Select value={filters.company} onValueChange={(v) => updateFilter("company", v)}>
                   <SelectTrigger 
-                    className="rounded-xl border-gray-200 h-9 text-sm bg-white shadow-sm" 
+                    className="rounded-xl border-gray-200/80 h-11 text-sm bg-white shadow-sm hover:shadow-md transition-shadow" 
                     data-testid="select-company"
                   >
                     <SelectValue placeholder="Все компании" />
                   </SelectTrigger>
-                  <SelectContent className="bg-white border border-gray-200 shadow-lg rounded-xl">
+                  <SelectContent className="bg-white border border-gray-100 shadow-xl rounded-xl">
                     <SelectItem value="all">Все компании</SelectItem>
                     {filterOptions?.companies.map((company) => (
                       <SelectItem key={company} value={company}>{company}</SelectItem>
@@ -323,15 +335,15 @@ export default function VacanciesPage() {
               
               {/* Location filter */}
               <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">Локация</label>
+                <label className="text-xs font-semibold text-gray-500 mb-1.5 block uppercase tracking-wide">Локация</label>
                 <Select value={filters.location} onValueChange={(v) => updateFilter("location", v)}>
                   <SelectTrigger 
-                    className="rounded-xl border-gray-200 h-9 text-sm bg-white shadow-sm" 
+                    className="rounded-xl border-gray-200/80 h-11 text-sm bg-white shadow-sm hover:shadow-md transition-shadow" 
                     data-testid="select-location"
                   >
                     <SelectValue placeholder="Любая локация" />
                   </SelectTrigger>
-                  <SelectContent className="bg-white border border-gray-200 shadow-lg rounded-xl">
+                  <SelectContent className="bg-white border border-gray-100 shadow-xl rounded-xl">
                     <SelectItem value="all">Любая локация</SelectItem>
                     {filterOptions?.locations.map((location) => (
                       <SelectItem key={location} value={location}>{location}</SelectItem>
@@ -342,15 +354,15 @@ export default function VacanciesPage() {
               
               {/* Salary filter */}
               <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">Зарплата</label>
+                <label className="text-xs font-semibold text-gray-500 mb-1.5 block uppercase tracking-wide">Зарплата</label>
                 <Select value={filters.salaryRange} onValueChange={(v) => updateFilter("salaryRange", v)}>
                   <SelectTrigger 
-                    className="rounded-xl border-gray-200 h-9 text-sm bg-white shadow-sm" 
+                    className="rounded-xl border-gray-200/80 h-11 text-sm bg-white shadow-sm hover:shadow-md transition-shadow" 
                     data-testid="select-salary"
                   >
                     <SelectValue placeholder="Любая зарплата" />
                   </SelectTrigger>
-                  <SelectContent className="bg-white border border-gray-200 shadow-lg rounded-xl">
+                  <SelectContent className="bg-white border border-gray-100 shadow-xl rounded-xl">
                     {SALARY_RANGES.map((range) => (
                       <SelectItem key={range.value} value={range.value}>{range.label}</SelectItem>
                     ))}
@@ -360,15 +372,15 @@ export default function VacanciesPage() {
               
               {/* Employment type filter */}
               <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">Тип занятости</label>
+                <label className="text-xs font-semibold text-gray-500 mb-1.5 block uppercase tracking-wide">Тип занятости</label>
                 <Select value={filters.employmentType} onValueChange={(v) => updateFilter("employmentType", v)}>
                   <SelectTrigger 
-                    className="rounded-xl border-gray-200 h-9 text-sm bg-white shadow-sm" 
+                    className="rounded-xl border-gray-200/80 h-11 text-sm bg-white shadow-sm hover:shadow-md transition-shadow" 
                     data-testid="select-employment-type"
                   >
                     <SelectValue placeholder="Любой тип" />
                   </SelectTrigger>
-                  <SelectContent className="bg-white border border-gray-200 shadow-lg rounded-xl">
+                  <SelectContent className="bg-white border border-gray-100 shadow-xl rounded-xl">
                     {EMPLOYMENT_TYPES.map((type) => (
                       <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
                     ))}
@@ -382,7 +394,7 @@ export default function VacanciesPage() {
                 variant="ghost"
                 size="sm"
                 onClick={clearFilters}
-                className="w-full text-gray-500 hover:text-gray-700"
+                className="w-full text-gray-500 hover:text-gray-700 hover:bg-gray-100/50"
                 data-testid="button-clear-filters"
               >
                 Сбросить фильтры
@@ -393,14 +405,14 @@ export default function VacanciesPage() {
       )}
 
       {/* Generating indicator */}
-      {isGenerating && (
-        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[60] bg-white/95 backdrop-blur-sm p-6 rounded-2xl shadow-xl flex flex-col items-center gap-3">
+      {isGenerating && !expandedVacancy && (
+        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[60] bg-white/95 backdrop-blur-xl p-6 rounded-2xl shadow-2xl flex flex-col items-center gap-3 border border-white/50">
           <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
           <p className="text-gray-700 font-medium">Генерируем сопроводительное...</p>
         </div>
       )}
 
-      {/* Cards container - takes remaining space with bottom padding for controls */}
+      {/* Cards container */}
       <div className="flex-1 flex items-center justify-center relative z-10 px-4 pb-36">
         <div className="relative w-full max-w-[400px] h-[480px] flex justify-center">
           <AnimatePresence>
@@ -424,7 +436,8 @@ export default function VacanciesPage() {
                     <VacancyCard 
                       job={job} 
                       onSwipe={handleSwipe} 
-                      active={isTop && !isGenerating}
+                      onExpand={() => setExpandedVacancy(job)}
+                      active={isTop && !isGenerating && !expandedVacancy}
                     />
                  </div>
                );
@@ -432,9 +445,9 @@ export default function VacanciesPage() {
           </AnimatePresence>
           
           {currentJobs.length === 0 && (
-             <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-white/50 rounded-[24px] border-2 border-dashed border-gray-200">
-                <div className="bg-white p-4 rounded-full shadow-lg mb-4">
-                  <Briefcase className="w-8 h-8 text-gray-400" />
+             <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-white/60 backdrop-blur-sm rounded-[28px] border-2 border-dashed border-gray-200">
+                <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-4 rounded-2xl shadow-lg mb-4">
+                  <Briefcase className="w-8 h-8 text-white" />
                 </div>
                 <h3 className="text-xl font-bold text-gray-900 mb-2">
                   {hasActiveFilters ? "Ничего не найдено" : "Вакансии закончились!"}
@@ -469,41 +482,49 @@ export default function VacanciesPage() {
         </div>
       </div>
 
-      {/* Fixed swipe action buttons - above tabbar */}
-      <div className="fixed bottom-[72px] left-0 right-0 z-40 flex justify-center items-center gap-6 py-3 bg-gradient-to-t from-white/90 via-white/70 to-transparent">
+      {/* Fixed swipe action buttons */}
+      <div className="fixed bottom-[72px] left-0 right-0 z-40 flex justify-center items-center gap-6 py-3 bg-gradient-to-t from-white via-white/90 to-transparent">
         <Button
           size="icon"
           variant="outline"
-          className="h-14 w-14 rounded-full border-2 border-red-100 bg-white text-red-500 shadow-lg hover:bg-red-50 hover:border-red-200 transition-all hover:scale-110"
+          className="h-16 w-16 rounded-full border-2 border-red-100 bg-white text-red-500 shadow-xl shadow-red-500/10 hover:bg-red-50 hover:border-red-200 hover:shadow-2xl hover:shadow-red-500/20 transition-all hover:scale-110 active:scale-95"
           onClick={() => currentJobs.length > 0 && handleSwipe("left")}
-          disabled={currentJobs.length === 0 || isGenerating}
+          disabled={currentJobs.length === 0 || isGenerating || !!expandedVacancy}
           data-testid="button-nope"
         >
-          <X className="h-6 w-6" strokeWidth={3} />
+          <X className="h-7 w-7" strokeWidth={3} />
         </Button>
 
         <Button
            size="icon"
            variant="secondary"
-           className="h-10 w-10 rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 shadow-md transition-all hover:scale-105"
+           className="h-12 w-12 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 shadow-lg transition-all hover:scale-105 active:scale-95"
            onClick={handleUndo}
-           disabled={history.length === 0 || isGenerating}
+           disabled={history.length === 0 || isGenerating || !!expandedVacancy}
            data-testid="button-undo"
         >
-           <RotateCcw className="h-4 w-4" />
+           <RotateCcw className="h-5 w-5" />
         </Button>
 
         <Button
           size="icon"
           variant="outline"
-          className="h-14 w-14 rounded-full border-2 border-green-100 bg-white text-green-500 shadow-lg hover:bg-green-50 hover:border-green-200 transition-all hover:scale-110"
+          className="h-16 w-16 rounded-full border-2 border-green-100 bg-white text-green-500 shadow-xl shadow-green-500/10 hover:bg-green-50 hover:border-green-200 hover:shadow-2xl hover:shadow-green-500/20 transition-all hover:scale-110 active:scale-95"
           onClick={() => currentJobs.length > 0 && handleSwipe("right")}
-          disabled={currentJobs.length === 0 || isGenerating}
+          disabled={currentJobs.length === 0 || isGenerating || !!expandedVacancy}
           data-testid="button-like"
         >
-          <Heart className="h-6 w-6" strokeWidth={3} fill="currentColor" />
+          <Heart className="h-7 w-7" strokeWidth={3} fill="currentColor" />
         </Button>
       </div>
+
+      {/* Full view modal */}
+      <VacancyFullView 
+        vacancy={expandedVacancy}
+        onClose={() => setExpandedVacancy(null)}
+        onApply={() => expandedVacancy && applyToJob(expandedVacancy)}
+        isApplying={isGenerating}
+      />
     </div>
   );
 }
