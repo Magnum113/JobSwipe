@@ -242,17 +242,32 @@ export async function registerRoutes(
   });
 
   // Generate cover letter using AI
+  const coverLetterRequestSchema = z.object({
+    resume: z.string().optional().default(""),
+    vacancy: z.object({
+      id: z.number(),
+      title: z.string(),
+      company: z.string(),
+      salary: z.string(),
+      description: z.string().nullable().optional(),
+      tags: z.array(z.string()).nullable().optional(),
+    }),
+  });
+
   app.post("/api/cover-letter/generate", async (req, res) => {
     try {
-      const { resume, vacancy } = req.body;
+      const validated = coverLetterRequestSchema.parse(req.body);
       
-      if (!vacancy || typeof vacancy !== "object") {
-        return res.status(400).json({ error: "Vacancy object is required" });
-      }
-      
-      const coverLetter = await generateCoverLetter(resume || "", vacancy as Job);
+      const coverLetter = await generateCoverLetter(
+        validated.resume, 
+        validated.vacancy as Job
+      );
       res.json({ coverLetter });
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        console.error("Validation error:", error.errors);
+        return res.status(400).json({ error: "Invalid request data", details: error.errors });
+      }
       console.error("Error generating cover letter:", error);
       res.status(500).json({ error: "Failed to generate cover letter" });
     }
