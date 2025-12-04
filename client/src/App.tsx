@@ -1,17 +1,27 @@
-import { Switch, Route } from "wouter";
+import { useState } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
-import Home from "@/pages/home";
+import { TabBar, type TabType } from "@/components/TabBar";
+import VacanciesPage from "@/pages/VacanciesPage";
+import SearchPage from "@/pages/SearchPage";
+import HistoryPage from "@/pages/HistoryPage";
+import Profile from "@/pages/Profile";
 
-function Router() {
+function AppContent() {
+  const [activeTab, setActiveTab] = useState<TabType>("vacancies");
+
   return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route component={NotFound} />
-    </Switch>
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <main className="flex-1 overflow-auto">
+        {activeTab === "vacancies" && <VacanciesPage />}
+        {activeTab === "search" && <SearchPage />}
+        {activeTab === "history" && <HistoryPage />}
+        {activeTab === "profile" && <Profile />}
+      </main>
+      <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+    </div>
   );
 }
 
@@ -20,7 +30,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-        <Router />
+        <AppContent />
       </TooltipProvider>
     </QueryClientProvider>
   );
