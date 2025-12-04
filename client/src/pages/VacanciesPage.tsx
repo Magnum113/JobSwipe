@@ -436,7 +436,7 @@ export default function VacanciesPage() {
 
       {/* Cards container */}
       <div className="flex-1 flex items-center justify-center relative z-10 px-4 pb-36">
-        <div className="relative w-full max-w-[400px] h-[480px] flex justify-center">
+        <div className="relative w-full max-w-[380px] h-[540px] flex justify-center">
           <AnimatePresence>
             {currentJobs.map((job, index) => {
                if (index > 1) return null;
