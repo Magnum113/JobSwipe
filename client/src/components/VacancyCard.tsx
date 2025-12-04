@@ -3,14 +3,7 @@ import { motion, PanInfo, useMotionValue, useTransform, useAnimation } from "fra
 import { Check, X, Building2, Wallet } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-export interface Job {
-  title: string;
-  company: string;
-  salary: string;
-  description: string;
-  tags?: string[];
-}
+import type { Job } from "@shared/schema";
 
 interface VacancyCardProps {
   job: Job;
@@ -78,17 +71,17 @@ export const VacancyCard = ({ job, onSwipe, active }: VacancyCardProps) => {
           
           <div className="px-8 py-6 flex-1 flex flex-col gap-4">
             <div>
-              <h2 className="text-2xl font-bold leading-tight text-gray-900 mb-1">{job.title}</h2>
-              <p className="text-lg font-medium text-indigo-600">{job.company}</p>
+              <h2 className="text-2xl font-bold leading-tight text-gray-900 mb-1" data-testid="text-job-title">{job.title}</h2>
+              <p className="text-lg font-medium text-indigo-600" data-testid="text-company">{job.company}</p>
             </div>
 
             <div className="flex items-center gap-2 text-gray-600 bg-gray-50 p-3 rounded-xl w-fit">
               <Wallet className="w-5 h-5" />
-              <span className="font-semibold">{job.salary}</span>
+              <span className="font-semibold" data-testid="text-salary">{job.salary}</span>
             </div>
 
             <div className="mt-2 space-y-2">
-               <p className="text-gray-600 leading-relaxed line-clamp-4 text-lg">
+               <p className="text-gray-600 leading-relaxed line-clamp-4 text-lg" data-testid="text-description">
                 {job.description}
               </p>
             </div>
