@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { VacancyCard } from "@/components/VacancyCard";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { VacancyCard, VacancyCardRef } from "@/components/VacancyCard";
 import { VacancyFullView } from "@/components/VacancyFullView";
 import { AnimatePresence } from "framer-motion";
 import { X, Heart, RotateCcw, Briefcase, Filter, Search } from "lucide-react";
@@ -132,6 +132,8 @@ export default function VacanciesPage() {
   const [history, setHistory] = useState<number[]>([]);
   const [expandedVacancy, setExpandedVacancy] = useState<Job | null>(null);
   
+  const cardRef = useRef<VacancyCardRef>(null);
+  
   const [filters, setFilters] = useState<Filters>({
     company: "all",
     salaryRange: "all",
@@ -177,71 +179,63 @@ export default function VacanciesPage() {
 
   const currentJobs = jobs.slice(currentIndex);
 
-  const applyToJobAsync = useCallback(async (job: Job) => {
+  const handleSwipe = useCallback((direction: "left" | "right") => {
     if (isSwiping) return;
-    setIsSwiping(true);
+    if (currentJobs.length === 0) return;
     
-    try {
-      const application = await applicationMutation.mutateAsync({
-        jobId: job.id,
-        jobTitle: job.title,
-        company: job.company,
+    setIsSwiping(true);
+    const currentJob = currentJobs[0];
+
+    if (direction === "right") {
+      applicationMutation.mutate({
+        jobId: currentJob.id,
+        jobTitle: currentJob.title,
+        company: currentJob.company,
         coverLetter: null,
         status: "Отклик отправлен",
+      }, {
+        onSuccess: (application) => {
+          toast({
+            title: "Отклик отправлен!",
+            description: `Сопроводительное письмо генерируется...`,
+          });
+          
+          const resumeContent = resume?.content || "";
+          generateCoverLetter(resumeContent, currentJob)
+            .then(async (letter) => {
+              await updateApplicationCoverLetter(application.id, letter);
+              queryClient.invalidateQueries({ queryKey: ["applications"] });
+            })
+            .catch(async () => {
+              await updateApplicationCoverLetter(application.id, "Ошибка генерации письма. Попробуйте обновить страницу.");
+              queryClient.invalidateQueries({ queryKey: ["applications"] });
+            });
+        },
+        onError: () => {
+          toast({
+            title: "Ошибка",
+            description: "Не удалось создать отклик",
+            variant: "destructive",
+          });
+        }
       });
-      
-      swipeMutation.mutate({ jobId: job.id, direction: "right" });
-      
-      toast({
-        title: "Отклик отправлен!",
-        description: `Сопроводительное письмо генерируется...`,
-      });
-      
-      setExpandedVacancy(null);
-      setHistory(prev => [...prev, currentIndex]);
-      setCurrentIndex(prev => prev + 1);
-      
-      const resumeContent = resume?.content || "";
-      generateCoverLetter(resumeContent, job)
-        .then(async (letter) => {
-          await updateApplicationCoverLetter(application.id, letter);
-          queryClient.invalidateQueries({ queryKey: ["applications"] });
-        })
-        .catch(async () => {
-          await updateApplicationCoverLetter(application.id, "Ошибка генерации письма. Попробуйте обновить страницу.");
-          queryClient.invalidateQueries({ queryKey: ["applications"] });
-        });
-        
-    } catch (error) {
-      console.error("Error creating application:", error);
-      toast({
-        title: "Ошибка",
-        description: "Не удалось создать отклик",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSwiping(false);
     }
-  }, [isSwiping, applicationMutation, swipeMutation, toast, currentIndex, resume, queryClient]);
 
-  const handleSwipe = useCallback(async (direction: "left" | "right") => {
-    if (currentJobs.length === 0 || isSwiping || expandedVacancy) return;
+    swipeMutation.mutate({ jobId: currentJob.id, direction });
+    setHistory(prev => [...prev, currentIndex]);
+    setCurrentIndex(prev => prev + 1);
+    setExpandedVacancy(null);
 
-    const currentJob = currentJobs[0];
+    setTimeout(() => setIsSwiping(false), 150);
+  }, [isSwiping, currentJobs, currentIndex, resume, applicationMutation, swipeMutation, toast, queryClient]);
+
+  const triggerSwipe = useCallback(async (direction: "left" | "right") => {
+    if (isSwiping || currentJobs.length === 0 || expandedVacancy) return;
     
-    if (direction === "right") {
-      await applyToJobAsync(currentJob);
-    } else {
-      setIsSwiping(true);
-      try {
-        swipeMutation.mutate({ jobId: currentJob.id, direction });
-        setHistory(prev => [...prev, currentIndex]);
-        setCurrentIndex(prev => prev + 1);
-      } finally {
-        setIsSwiping(false);
-      }
+    if (cardRef.current) {
+      await cardRef.current.swipe(direction);
     }
-  }, [currentJobs, isSwiping, expandedVacancy, applyToJobAsync, swipeMutation, currentIndex]);
+  }, [isSwiping, currentJobs.length, expandedVacancy]);
 
   const handleUndo = useCallback(() => {
     if (history.length === 0 || expandedVacancy || isSwiping) return;
@@ -269,6 +263,15 @@ export default function VacanciesPage() {
       keyword: "",
     });
   }, []);
+
+  const handleApplyFromFullView = useCallback(async () => {
+    if (!expandedVacancy || isSwiping) return;
+    setExpandedVacancy(null);
+    
+    setTimeout(() => {
+      triggerSwipe("right");
+    }, 100);
+  }, [expandedVacancy, isSwiping, triggerSwipe]);
 
   const hasActiveFilters = filters.company !== "all" || 
     filters.salaryRange !== "all" || 
@@ -453,6 +456,7 @@ export default function VacanciesPage() {
                    }}
                  >
                     <VacancyCard 
+                      ref={isTop ? cardRef : null}
                       job={job} 
                       onSwipe={handleSwipe} 
                       onExpand={() => setExpandedVacancy(job)}
@@ -507,7 +511,7 @@ export default function VacanciesPage() {
           size="icon"
           variant="outline"
           className="h-16 w-16 rounded-full border-2 border-red-100 bg-white text-red-500 shadow-xl shadow-red-500/10 hover:bg-red-50 hover:border-red-200 hover:shadow-2xl hover:shadow-red-500/20 transition-all hover:scale-110 active:scale-95"
-          onClick={() => currentJobs.length > 0 && handleSwipe("left")}
+          onClick={() => triggerSwipe("left")}
           disabled={currentJobs.length === 0 || isSwiping || !!expandedVacancy}
           data-testid="button-nope"
         >
@@ -529,7 +533,7 @@ export default function VacanciesPage() {
           size="icon"
           variant="outline"
           className="h-16 w-16 rounded-full border-2 border-green-100 bg-white text-green-500 shadow-xl shadow-green-500/10 hover:bg-green-50 hover:border-green-200 hover:shadow-2xl hover:shadow-green-500/20 transition-all hover:scale-110 active:scale-95"
-          onClick={() => currentJobs.length > 0 && handleSwipe("right")}
+          onClick={() => triggerSwipe("right")}
           disabled={currentJobs.length === 0 || isSwiping || !!expandedVacancy}
           data-testid="button-like"
         >
@@ -541,7 +545,7 @@ export default function VacanciesPage() {
       <VacancyFullView 
         vacancy={expandedVacancy}
         onClose={() => setExpandedVacancy(null)}
-        onApply={() => expandedVacancy && applyToJobAsync(expandedVacancy)}
+        onApply={handleApplyFromFullView}
         isApplying={isSwiping}
       />
     </div>
