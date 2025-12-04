@@ -1,7 +1,7 @@
-import { Briefcase, Search, History, User } from "lucide-react";
+import { Briefcase, History, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type TabType = "vacancies" | "search" | "history" | "profile";
+export type TabType = "vacancies" | "history" | "profile";
 
 interface TabBarProps {
   activeTab: TabType;
@@ -10,7 +10,6 @@ interface TabBarProps {
 
 const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
   { id: "vacancies", label: "Вакансии", icon: <Briefcase className="w-5 h-5" /> },
-  { id: "search", label: "Поиск", icon: <Search className="w-5 h-5" /> },
   { id: "history", label: "История", icon: <History className="w-5 h-5" /> },
   { id: "profile", label: "Профиль", icon: <User className="w-5 h-5" /> },
 ];

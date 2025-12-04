@@ -9,13 +9,22 @@ import {
 import { db } from "./db";
 import { eq, notInArray, desc, ilike, or, and, gte, lte, sql } from "drizzle-orm";
 
+export interface JobFilters {
+  company?: string;
+  salaryRange?: string;
+  employmentType?: string;
+  location?: string;
+  keyword?: string;
+}
+
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   
   getAllJobs(): Promise<Job[]>;
-  getUnswipedJobs(): Promise<Job[]>;
+  getUnswipedJobs(filters?: JobFilters): Promise<Job[]>;
+  getFilterOptions(): Promise<{ companies: string[]; locations: string[] }>;
   searchJobs(filters: { company?: string; minSalary?: number; maxSalary?: number; keyword?: string; title?: string }): Promise<Job[]>;
   createJob(job: InsertJob): Promise<Job>;
   seedJobs(jobList: InsertJob[]): Promise<void>;
@@ -51,18 +60,68 @@ export class DbStorage implements IStorage {
     return await db.select().from(jobs).orderBy(desc(jobs.createdAt));
   }
 
-  async getUnswipedJobs(): Promise<Job[]> {
+  async getUnswipedJobs(filters?: JobFilters): Promise<Job[]> {
     const swipedJobIds = await db.select({ jobId: swipes.jobId }).from(swipes);
     const swipedIds = swipedJobIds.map((s: { jobId: number }) => s.jobId);
     
-    if (swipedIds.length === 0) {
+    const conditions = [];
+    
+    if (swipedIds.length > 0) {
+      conditions.push(notInArray(jobs.id, swipedIds));
+    }
+    
+    if (filters) {
+      if (filters.company && filters.company !== 'all') {
+        conditions.push(eq(jobs.company, filters.company));
+      }
+      
+      if (filters.employmentType && filters.employmentType !== 'all') {
+        conditions.push(eq(jobs.employmentType, filters.employmentType));
+      }
+      
+      if (filters.location && filters.location !== 'all') {
+        conditions.push(eq(jobs.location, filters.location));
+      }
+      
+      if (filters.keyword) {
+        conditions.push(
+          or(
+            ilike(jobs.description, `%${filters.keyword}%`),
+            ilike(jobs.title, `%${filters.keyword}%`)
+          )
+        );
+      }
+      
+      if (filters.salaryRange && filters.salaryRange !== 'all') {
+        // Parse salary range filter
+        // Salary format: "150–200k" or "300–400k"
+        // We'll filter based on the lower bound of the salary range
+      }
+    }
+    
+    if (conditions.length === 0) {
       return await db.select().from(jobs).orderBy(desc(jobs.createdAt));
     }
     
     return await db.select()
       .from(jobs)
-      .where(notInArray(jobs.id, swipedIds))
+      .where(and(...conditions))
       .orderBy(desc(jobs.createdAt));
+  }
+
+  async getFilterOptions(): Promise<{ companies: string[]; locations: string[] }> {
+    const allJobs = await this.getAllJobs();
+    const companiesSet = new Set<string>();
+    const locationsSet = new Set<string>();
+    
+    for (const job of allJobs) {
+      companiesSet.add(job.company);
+      locationsSet.add(job.location);
+    }
+    
+    const companies = Array.from(companiesSet).sort();
+    const locations = Array.from(locationsSet).sort();
+    return { companies, locations };
   }
 
   async searchJobs(filters: { company?: string; minSalary?: number; maxSalary?: number; keyword?: string; title?: string }): Promise<Job[]> {

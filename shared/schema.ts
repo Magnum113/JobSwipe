@@ -24,6 +24,8 @@ export const jobs = pgTable("jobs", {
   salary: text("salary").notNull(),
   description: text("description").notNull(),
   tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
+  employmentType: text("employment_type").notNull().default("full-time"),
+  location: text("location").notNull().default("Москва"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
