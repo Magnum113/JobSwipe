@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { VacancyCard } from "@/components/VacancyCard";
 import { AnimatePresence } from "framer-motion";
-import { X, Heart, RotateCcw, Briefcase, Loader2, Filter, ChevronDown, Search } from "lucide-react";
+import { X, Heart, RotateCcw, Briefcase, Loader2, Filter, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -131,7 +131,7 @@ export default function VacanciesPage() {
     queryFn: fetchFilterOptions,
   });
   
-  const { data: jobs = [], isLoading: jobsLoading, refetch } = useQuery({
+  const { data: jobs = [], isLoading: jobsLoading } = useQuery({
     queryKey: ["jobs", "unswiped", filters],
     queryFn: () => fetchUnswipedJobs(filters),
   });
@@ -141,7 +141,6 @@ export default function VacanciesPage() {
     queryFn: fetchResume,
   });
 
-  // Reset index when filters change
   useEffect(() => {
     setCurrentIndex(0);
     setHistory([]);
@@ -251,7 +250,7 @@ export default function VacanciesPage() {
   }
 
   return (
-    <div className="flex flex-col h-full pb-20 relative">
+    <div className="flex flex-col h-full relative overflow-hidden">
       {/* Decorative background elements */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
         <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-blue-200/20 blur-3xl" />
@@ -259,7 +258,7 @@ export default function VacanciesPage() {
       </div>
 
       {/* Header with filter button */}
-      <header className="relative z-30 px-4 pt-4 pb-2">
+      <header className="relative z-30 px-4 pt-4 pb-2 shrink-0">
         <div className="flex items-center justify-between max-w-lg mx-auto">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-white rounded-xl shadow-sm">
@@ -288,8 +287,8 @@ export default function VacanciesPage() {
 
       {/* Filter panel */}
       {isFilterOpen && (
-        <div className="relative z-30 px-4 pb-3">
-          <div className="max-w-lg mx-auto bg-white rounded-2xl shadow-lg p-4 space-y-3">
+        <div className="relative z-30 px-4 pb-3 shrink-0">
+          <div className="max-w-lg mx-auto bg-white rounded-2xl shadow-lg p-4 space-y-3 border border-gray-100">
             {/* Keyword search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -297,7 +296,7 @@ export default function VacanciesPage() {
                 placeholder="Поиск по ключевым словам..."
                 value={filters.keyword}
                 onChange={(e) => updateFilter("keyword", e.target.value)}
-                className="pl-9 rounded-xl border-gray-200"
+                className="pl-9 rounded-xl border-gray-200 bg-white"
                 data-testid="input-filter-keyword"
               />
             </div>
@@ -307,10 +306,13 @@ export default function VacanciesPage() {
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">Компания</label>
                 <Select value={filters.company} onValueChange={(v) => updateFilter("company", v)}>
-                  <SelectTrigger className="rounded-xl border-gray-200 h-9 text-sm" data-testid="select-company">
+                  <SelectTrigger 
+                    className="rounded-xl border-gray-200 h-9 text-sm bg-white shadow-sm" 
+                    data-testid="select-company"
+                  >
                     <SelectValue placeholder="Все компании" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-white border border-gray-200 shadow-lg rounded-xl">
                     <SelectItem value="all">Все компании</SelectItem>
                     {filterOptions?.companies.map((company) => (
                       <SelectItem key={company} value={company}>{company}</SelectItem>
@@ -323,10 +325,13 @@ export default function VacanciesPage() {
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">Локация</label>
                 <Select value={filters.location} onValueChange={(v) => updateFilter("location", v)}>
-                  <SelectTrigger className="rounded-xl border-gray-200 h-9 text-sm" data-testid="select-location">
+                  <SelectTrigger 
+                    className="rounded-xl border-gray-200 h-9 text-sm bg-white shadow-sm" 
+                    data-testid="select-location"
+                  >
                     <SelectValue placeholder="Любая локация" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-white border border-gray-200 shadow-lg rounded-xl">
                     <SelectItem value="all">Любая локация</SelectItem>
                     {filterOptions?.locations.map((location) => (
                       <SelectItem key={location} value={location}>{location}</SelectItem>
@@ -339,10 +344,13 @@ export default function VacanciesPage() {
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">Зарплата</label>
                 <Select value={filters.salaryRange} onValueChange={(v) => updateFilter("salaryRange", v)}>
-                  <SelectTrigger className="rounded-xl border-gray-200 h-9 text-sm" data-testid="select-salary">
+                  <SelectTrigger 
+                    className="rounded-xl border-gray-200 h-9 text-sm bg-white shadow-sm" 
+                    data-testid="select-salary"
+                  >
                     <SelectValue placeholder="Любая зарплата" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-white border border-gray-200 shadow-lg rounded-xl">
                     {SALARY_RANGES.map((range) => (
                       <SelectItem key={range.value} value={range.value}>{range.label}</SelectItem>
                     ))}
@@ -354,10 +362,13 @@ export default function VacanciesPage() {
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">Тип занятости</label>
                 <Select value={filters.employmentType} onValueChange={(v) => updateFilter("employmentType", v)}>
-                  <SelectTrigger className="rounded-xl border-gray-200 h-9 text-sm" data-testid="select-employment-type">
+                  <SelectTrigger 
+                    className="rounded-xl border-gray-200 h-9 text-sm bg-white shadow-sm" 
+                    data-testid="select-employment-type"
+                  >
                     <SelectValue placeholder="Любой тип" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-white border border-gray-200 shadow-lg rounded-xl">
                     {EMPLOYMENT_TYPES.map((type) => (
                       <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
                     ))}
@@ -383,14 +394,14 @@ export default function VacanciesPage() {
 
       {/* Generating indicator */}
       {isGenerating && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white/95 backdrop-blur-sm p-6 rounded-2xl shadow-xl flex flex-col items-center gap-3">
+        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[60] bg-white/95 backdrop-blur-sm p-6 rounded-2xl shadow-xl flex flex-col items-center gap-3">
           <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
           <p className="text-gray-700 font-medium">Генерируем сопроводительное...</p>
         </div>
       )}
 
-      {/* Cards container */}
-      <div className="flex-1 flex flex-col items-center justify-center z-20 px-4">
+      {/* Cards container - takes remaining space with bottom padding for controls */}
+      <div className="flex-1 flex items-center justify-center relative z-10 px-4 pb-36">
         <div className="relative w-full max-w-[400px] h-[480px] flex justify-center">
           <AnimatePresence>
             {currentJobs.map((job, index) => {
@@ -456,42 +467,42 @@ export default function VacanciesPage() {
              </div>
           )}
         </div>
+      </div>
 
-        {/* Controls */}
-        <div className="mt-6 flex items-center gap-6">
-          <Button
-            size="icon"
-            variant="outline"
-            className="h-14 w-14 rounded-full border-2 border-red-100 bg-white text-red-500 shadow-lg hover:bg-red-50 hover:border-red-200 transition-all hover:scale-110"
-            onClick={() => currentJobs.length > 0 && handleSwipe("left")}
-            disabled={currentJobs.length === 0 || isGenerating}
-            data-testid="button-nope"
-          >
-            <X className="h-6 w-6" strokeWidth={3} />
-          </Button>
+      {/* Fixed swipe action buttons - above tabbar */}
+      <div className="fixed bottom-[72px] left-0 right-0 z-40 flex justify-center items-center gap-6 py-3 bg-gradient-to-t from-white/90 via-white/70 to-transparent">
+        <Button
+          size="icon"
+          variant="outline"
+          className="h-14 w-14 rounded-full border-2 border-red-100 bg-white text-red-500 shadow-lg hover:bg-red-50 hover:border-red-200 transition-all hover:scale-110"
+          onClick={() => currentJobs.length > 0 && handleSwipe("left")}
+          disabled={currentJobs.length === 0 || isGenerating}
+          data-testid="button-nope"
+        >
+          <X className="h-6 w-6" strokeWidth={3} />
+        </Button>
 
-          <Button
-             size="icon"
-             variant="secondary"
-             className="h-10 w-10 rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 shadow-md transition-all hover:scale-105"
-             onClick={handleUndo}
-             disabled={history.length === 0 || isGenerating}
-             data-testid="button-undo"
-          >
-             <RotateCcw className="h-4 w-4" />
-          </Button>
+        <Button
+           size="icon"
+           variant="secondary"
+           className="h-10 w-10 rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 shadow-md transition-all hover:scale-105"
+           onClick={handleUndo}
+           disabled={history.length === 0 || isGenerating}
+           data-testid="button-undo"
+        >
+           <RotateCcw className="h-4 w-4" />
+        </Button>
 
-          <Button
-            size="icon"
-            variant="outline"
-            className="h-14 w-14 rounded-full border-2 border-green-100 bg-white text-green-500 shadow-lg hover:bg-green-50 hover:border-green-200 transition-all hover:scale-110"
-            onClick={() => currentJobs.length > 0 && handleSwipe("right")}
-            disabled={currentJobs.length === 0 || isGenerating}
-            data-testid="button-like"
-          >
-            <Heart className="h-6 w-6" strokeWidth={3} fill="currentColor" />
-          </Button>
-        </div>
+        <Button
+          size="icon"
+          variant="outline"
+          className="h-14 w-14 rounded-full border-2 border-green-100 bg-white text-green-500 shadow-lg hover:bg-green-50 hover:border-green-200 transition-all hover:scale-110"
+          onClick={() => currentJobs.length > 0 && handleSwipe("right")}
+          disabled={currentJobs.length === 0 || isGenerating}
+          data-testid="button-like"
+        >
+          <Heart className="h-6 w-6" strokeWidth={3} fill="currentColor" />
+        </Button>
       </div>
     </div>
   );
