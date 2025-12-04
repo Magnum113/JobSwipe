@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Building2, Wallet, MapPin, Briefcase, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,8 +18,52 @@ const employmentTypeLabels: Record<string, string> = {
   "hybrid": "Гибридный формат",
 };
 
+const companyDomains: Record<string, string> = {
+  "Ozon": "ozon.ru",
+  "Wildberries": "wildberries.ru",
+  "Yandex": "yandex.ru",
+  "Yandex Cloud": "cloud.yandex.ru",
+  "Яндекс Маркет": "market.yandex.ru",
+  "Avito": "avito.ru",
+  "VK": "vk.com",
+  "VK Play": "vkplay.ru",
+  "Tinkoff": "tinkoff.ru",
+  "Тинькофф": "tinkoff.ru",
+  "T-Bank": "tinkoff.ru",
+  "Сбер": "sber.ru",
+  "СберМаркет": "sbermarket.ru",
+  "Lamoda": "lamoda.ru",
+  "X5 Tech": "x5.ru",
+  "Mail.ru Group": "mail.ru",
+  "Magnit Tech": "magnit.ru",
+  "Циан": "cian.ru",
+  "05.ru": "05.ru",
+  "Самокат": "samokat.ru",
+  "Delivery Club": "delivery-club.ru",
+  "Skillbox": "skillbox.ru",
+  "Skyeng": "skyeng.ru",
+  "Золотое Яблоко": "goldapple.ru",
+  "Мегамаркет": "megamarket.ru",
+};
+
+function getCompanyLogoUrl(company: string): string {
+  const domain = companyDomains[company];
+  if (domain) {
+    return `https://api.companyenrich.com/logo/${domain}`;
+  }
+  return "";
+}
+
 export function VacancyFullView({ vacancy, onClose, onApply, isApplying }: VacancyFullViewProps) {
+  const [logoError, setLogoError] = useState(false);
+  
+  useEffect(() => {
+    setLogoError(false);
+  }, [vacancy?.company]);
+  
   if (!vacancy) return null;
+  
+  const logoUrl = getCompanyLogoUrl(vacancy.company);
 
   return (
     <AnimatePresence>
@@ -54,7 +99,18 @@ export function VacancyFullView({ vacancy, onClose, onApply, isApplying }: Vacan
                 {/* Gradient header */}
                 <div className="h-28 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-400 flex items-center justify-center relative overflow-hidden">
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.2),transparent_50%)]" />
-                  <Building2 className="w-14 h-14 text-white/80" />
+                  <div className="w-20 h-20 rounded-2xl bg-white/90 shadow-lg flex items-center justify-center overflow-hidden">
+                    {logoUrl && !logoError ? (
+                      <img 
+                        src={logoUrl} 
+                        alt={`${vacancy.company} logo`}
+                        className="w-14 h-14 object-contain"
+                        onError={() => setLogoError(true)}
+                      />
+                    ) : (
+                      <Building2 className="w-10 h-10 text-indigo-500" />
+                    )}
+                  </div>
                 </div>
                 
                 {/* Close button */}

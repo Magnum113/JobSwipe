@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from "react";
+import { useRef, useCallback, useEffect, useState, forwardRef, useImperativeHandle } from "react";
 import { motion, PanInfo, useMotionValue, useTransform, useAnimation } from "framer-motion";
 import { Building2, Wallet, MapPin, Clock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,6 +22,42 @@ const employmentTypeLabels: Record<string, string> = {
   "hybrid": "Гибрид",
 };
 
+const companyDomains: Record<string, string> = {
+  "Ozon": "ozon.ru",
+  "Wildberries": "wildberries.ru",
+  "Yandex": "yandex.ru",
+  "Yandex Cloud": "cloud.yandex.ru",
+  "Яндекс Маркет": "market.yandex.ru",
+  "Avito": "avito.ru",
+  "VK": "vk.com",
+  "VK Play": "vkplay.ru",
+  "Tinkoff": "tinkoff.ru",
+  "Тинькофф": "tinkoff.ru",
+  "T-Bank": "tinkoff.ru",
+  "Сбер": "sber.ru",
+  "СберМаркет": "sbermarket.ru",
+  "Lamoda": "lamoda.ru",
+  "X5 Tech": "x5.ru",
+  "Mail.ru Group": "mail.ru",
+  "Magnit Tech": "magnit.ru",
+  "Циан": "cian.ru",
+  "05.ru": "05.ru",
+  "Самокат": "samokat.ru",
+  "Delivery Club": "delivery-club.ru",
+  "Skillbox": "skillbox.ru",
+  "Skyeng": "skyeng.ru",
+  "Золотое Яблоко": "goldapple.ru",
+  "Мегамаркет": "megamarket.ru",
+};
+
+function getCompanyLogoUrl(company: string): string {
+  const domain = companyDomains[company];
+  if (domain) {
+    return `https://api.companyenrich.com/logo/${domain}`;
+  }
+  return "";
+}
+
 export const VacancyCard = forwardRef<VacancyCardRef, VacancyCardProps>(
   ({ job, onSwipe, onExpand, active }, ref) => {
     const controls = useAnimation();
@@ -33,12 +69,16 @@ export const VacancyCard = forwardRef<VacancyCardRef, VacancyCardProps>(
     const likeOpacity = useTransform(x, [20, 150], [0, 1]);
     const nopeOpacity = useTransform(x, [-150, -20], [1, 0]);
 
+    const [logoError, setLogoError] = useState(false);
+    const logoUrl = getCompanyLogoUrl(job.company);
+
     useEffect(() => {
       isMounted.current = true;
+      setLogoError(false);
       return () => {
         isMounted.current = false;
       };
-    }, []);
+    }, [job.company]);
 
     const performSwipe = useCallback(async (direction: "left" | "right") => {
       if (!isMounted.current) return;
@@ -111,11 +151,20 @@ export const VacancyCard = forwardRef<VacancyCardRef, VacancyCardProps>(
           </motion.div>
 
           <CardContent className="p-0 h-full flex flex-col relative z-10">
-            {/* Header gradient */}
+            {/* Header gradient with company logo */}
             <div className="h-24 bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 flex items-center justify-center relative overflow-hidden">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(99,102,241,0.15),transparent_70%)]" />
-              <div className="w-16 h-16 rounded-2xl bg-white/90 shadow-lg flex items-center justify-center">
-                <Building2 className="w-8 h-8 text-indigo-500" />
+              <div className="w-16 h-16 rounded-2xl bg-white/90 shadow-lg flex items-center justify-center overflow-hidden">
+                {logoUrl && !logoError ? (
+                  <img 
+                    src={logoUrl} 
+                    alt={`${job.company} logo`}
+                    className="w-12 h-12 object-contain"
+                    onError={() => setLogoError(true)}
+                  />
+                ) : (
+                  <Building2 className="w-8 h-8 text-indigo-500" />
+                )}
               </div>
             </div>
             
