@@ -34,6 +34,22 @@ export const swipes = pgTable("swipes", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const resumes = pgTable("resumes", {
+  id: serial("id").primaryKey(),
+  content: text("content").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const applications = pgTable("applications", {
+  id: serial("id").primaryKey(),
+  jobId: integer("job_id").notNull().references(() => jobs.id),
+  jobTitle: text("job_title").notNull(),
+  company: text("company").notNull(),
+  coverLetter: text("cover_letter").notNull(),
+  status: text("status").notNull().default("Отклик отправлен"),
+  appliedAt: timestamp("applied_at").defaultNow().notNull(),
+});
+
 export const insertJobSchema = createInsertSchema(jobs).omit({
   id: true,
   createdAt: true,
@@ -44,7 +60,21 @@ export const insertSwipeSchema = createInsertSchema(swipes).omit({
   createdAt: true,
 });
 
+export const insertResumeSchema = createInsertSchema(resumes).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export const insertApplicationSchema = createInsertSchema(applications).omit({
+  id: true,
+  appliedAt: true,
+});
+
 export type Job = typeof jobs.$inferSelect;
 export type InsertJob = z.infer<typeof insertJobSchema>;
 export type Swipe = typeof swipes.$inferSelect;
 export type InsertSwipe = z.infer<typeof insertSwipeSchema>;
+export type Resume = typeof resumes.$inferSelect;
+export type InsertResume = z.infer<typeof insertResumeSchema>;
+export type Application = typeof applications.$inferSelect;
+export type InsertApplication = z.infer<typeof insertApplicationSchema>;
