@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { History, Building2, Calendar, FileText, ChevronDown, ChevronUp, CheckCircle } from "lucide-react";
+import { History, Building2, Calendar, FileText, ChevronDown, ChevronUp, CheckCircle, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
@@ -23,6 +23,8 @@ function ApplicationCard({ application }: { application: Application }) {
     hour: "2-digit",
     minute: "2-digit",
   });
+
+  const isGenerating = !application.coverLetter;
 
   return (
     <Card className="rounded-2xl border-0 shadow-md overflow-hidden">
@@ -54,21 +56,39 @@ function ApplicationCard({ application }: { application: Application }) {
             className="flex items-center gap-2 text-indigo-600 hover:text-indigo-700 transition-colors text-sm font-medium"
             data-testid={`button-expand-${application.id}`}
           >
-            <FileText className="w-4 h-4" />
-            Сопроводительное письмо
-            {expanded ? (
-              <ChevronUp className="w-4 h-4" />
+            {isGenerating ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Генерируется...
+              </>
             ) : (
-              <ChevronDown className="w-4 h-4" />
+              <>
+                <FileText className="w-4 h-4" />
+                Сопроводительное письмо
+                {expanded ? (
+                  <ChevronUp className="w-4 h-4" />
+                ) : (
+                  <ChevronDown className="w-4 h-4" />
+                )}
+              </>
             )}
           </button>
         </div>
         
-        {expanded && (
+        {expanded && !isGenerating && (
           <div className="bg-gray-50 p-5 border-t border-gray-100">
             <p className="text-gray-700 whitespace-pre-line text-sm leading-relaxed" data-testid={`text-cover-letter-${application.id}`}>
               {application.coverLetter}
             </p>
+          </div>
+        )}
+        
+        {expanded && isGenerating && (
+          <div className="bg-gray-50 p-5 border-t border-gray-100">
+            <div className="flex items-center gap-3 text-gray-500">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <p className="text-sm">Генерируется сопроводительное письмо...</p>
+            </div>
           </div>
         )}
       </CardContent>
@@ -80,6 +100,7 @@ export default function HistoryPage() {
   const { data: applications = [], isLoading } = useQuery({
     queryKey: ["applications"],
     queryFn: fetchApplications,
+    refetchInterval: 3000,
   });
 
   if (isLoading) {

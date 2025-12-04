@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertJobSchema, insertSwipeSchema, insertApplicationSchema, type Job } from "@shared/schema";
 import { z } from "zod";
-import { generateCoverLetter } from "./openrouter";
+import { generateCoverLetter } from "./gemini";
 
 const SEED_JOBS = [
   {
@@ -370,6 +370,28 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching applications:", error);
       res.status(500).json({ error: "Failed to fetch applications" });
+    }
+  });
+
+  // Update application cover letter
+  app.patch("/api/applications/:id/cover-letter", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { coverLetter } = req.body;
+      
+      if (typeof coverLetter !== "string") {
+        return res.status(400).json({ error: "Cover letter must be a string" });
+      }
+      
+      const updated = await storage.updateApplicationCoverLetter(id, coverLetter);
+      if (!updated) {
+        return res.status(404).json({ error: "Application not found" });
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating cover letter:", error);
+      res.status(500).json({ error: "Failed to update cover letter" });
     }
   });
 

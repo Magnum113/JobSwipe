@@ -47,7 +47,7 @@ export const applications = pgTable("applications", {
   jobId: integer("job_id").notNull().references(() => jobs.id),
   jobTitle: text("job_title").notNull(),
   company: text("company").notNull(),
-  coverLetter: text("cover_letter").notNull(),
+  coverLetter: text("cover_letter"),
   status: text("status").notNull().default("Отклик отправлен"),
   appliedAt: timestamp("applied_at").defaultNow().notNull(),
 });

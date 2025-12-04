@@ -38,6 +38,7 @@ export interface IStorage {
   
   createApplication(application: InsertApplication): Promise<Application>;
   getAllApplications(): Promise<Application[]>;
+  updateApplicationCoverLetter(id: number, coverLetter: string): Promise<Application | undefined>;
 }
 
 export class DbStorage implements IStorage {
@@ -237,6 +238,15 @@ export class DbStorage implements IStorage {
 
   async getAllApplications(): Promise<Application[]> {
     return await db.select().from(applications).orderBy(desc(applications.appliedAt));
+  }
+
+  async updateApplicationCoverLetter(id: number, coverLetter: string): Promise<Application | undefined> {
+    const [updated] = await db
+      .update(applications)
+      .set({ coverLetter })
+      .where(eq(applications.id, id))
+      .returning();
+    return updated;
   }
 }
 
