@@ -388,7 +388,6 @@ export default function VacanciesPage() {
         <div className="absolute top-[30%] -right-[20%] w-[50%] h-[70%] rounded-full bg-gradient-to-br from-purple-100/30 to-pink-100/30 blur-3xl" />
         <div className="absolute -bottom-[20%] left-[20%] w-[40%] h-[40%] rounded-full bg-gradient-to-br from-indigo-100/20 to-blue-100/20 blur-3xl" />
       </div>
-
       <header className="relative z-20 px-4 pt-4 pb-2 shrink-0">
         <div className="flex items-center justify-between max-w-lg mx-auto">
           <div className="flex items-center gap-3">
@@ -396,7 +395,7 @@ export default function VacanciesPage() {
               <Briefcase className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="font-bold text-gray-900">HH.ru Вакансии</h1>
+              <h1 className="font-bold text-gray-900">JobSwiper</h1>
               <p className="text-xs text-gray-500">{jobs.length} вакансий загружено</p>
             </div>
           </div>
@@ -415,7 +414,6 @@ export default function VacanciesPage() {
           </Button>
         </div>
       </header>
-
       {isFilterOpen && (
         <div className="relative z-20 px-4 pb-3 shrink-0">
           <div className="max-w-lg mx-auto bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl shadow-gray-900/5 p-4 space-y-3 border border-white/50">
@@ -533,7 +531,6 @@ export default function VacanciesPage() {
           </div>
         </div>
       )}
-
       <div className="flex-1 flex items-center justify-center relative z-10 px-4 pb-36">
         <div className="relative w-full max-w-[400px] h-[480px] flex justify-center">
           <AnimatePresence>
@@ -640,7 +637,6 @@ export default function VacanciesPage() {
           )}
         </div>
       </div>
-
       <div className="fixed bottom-[72px] left-0 right-0 z-40 flex justify-center items-center gap-6 py-3 bg-gradient-to-t from-white via-white/90 to-transparent">
         <Button
           size="icon"
@@ -675,7 +671,6 @@ export default function VacanciesPage() {
           <Heart className="h-7 w-7" strokeWidth={3} fill="currentColor" />
         </Button>
       </div>
-
       <VacancyFullView 
         vacancy={expandedVacancy}
         onClose={() => setExpandedVacancy(null)}
