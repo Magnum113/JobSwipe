@@ -1,58 +1,23 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Building2, Wallet, MapPin, Briefcase, Heart } from "lucide-react";
+import { X, Building2, Wallet, MapPin, Briefcase, Heart, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import type { Job } from "@shared/schema";
+import type { HHJob } from "@shared/schema";
 
 interface VacancyFullViewProps {
-  vacancy: Job | null;
+  vacancy: HHJob | null;
   onClose: () => void;
   onApply: () => void;
   isApplying?: boolean;
 }
 
 const employmentTypeLabels: Record<string, string> = {
-  "full-time": "Офис / full-time",
+  "full-time": "Полный день",
   "remote": "Удалённая работа",
   "hybrid": "Гибридный формат",
+  "part-time": "Частичная занятость",
 };
-
-const companyDomains: Record<string, string> = {
-  "Ozon": "ozon.ru",
-  "Wildberries": "wildberries.ru",
-  "Yandex": "yandex.ru",
-  "Yandex Cloud": "cloud.yandex.ru",
-  "Яндекс Маркет": "market.yandex.ru",
-  "Avito": "avito.ru",
-  "VK": "vk.com",
-  "VK Play": "vkplay.ru",
-  "Tinkoff": "tinkoff.ru",
-  "Тинькофф": "tinkoff.ru",
-  "T-Bank": "tinkoff.ru",
-  "Сбер": "sber.ru",
-  "СберМаркет": "sbermarket.ru",
-  "Lamoda": "lamoda.ru",
-  "X5 Tech": "x5.ru",
-  "Mail.ru Group": "mail.ru",
-  "Magnit Tech": "magnit.ru",
-  "Циан": "cian.ru",
-  "05.ru": "05.ru",
-  "Самокат": "samokat.ru",
-  "Delivery Club": "delivery-club.ru",
-  "Skillbox": "skillbox.ru",
-  "Skyeng": "skyeng.ru",
-  "Золотое Яблоко": "goldapple.ru",
-  "Мегамаркет": "megamarket.ru",
-};
-
-function getCompanyLogoUrl(company: string): string {
-  const domain = companyDomains[company];
-  if (domain) {
-    return `https://api.companyenrich.com/logo/${domain}`;
-  }
-  return "";
-}
 
 export function VacancyFullView({ vacancy, onClose, onApply, isApplying }: VacancyFullViewProps) {
   const [logoError, setLogoError] = useState(false);
@@ -62,14 +27,11 @@ export function VacancyFullView({ vacancy, onClose, onApply, isApplying }: Vacan
   }, [vacancy?.company]);
   
   if (!vacancy) return null;
-  
-  const logoUrl = getCompanyLogoUrl(vacancy.company);
 
   return (
     <AnimatePresence>
       {vacancy && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -79,7 +41,6 @@ export function VacancyFullView({ vacancy, onClose, onApply, isApplying }: Vacan
             onClick={onClose}
           />
           
-          {/* Full view modal */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -94,15 +55,13 @@ export function VacancyFullView({ vacancy, onClose, onApply, isApplying }: Vacan
               className="bg-white/95 backdrop-blur-xl rounded-[28px] shadow-2xl w-full max-w-md max-h-[90vh] overflow-hidden pointer-events-auto flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Header with close button */}
               <div className="relative shrink-0">
-                {/* Gradient header */}
                 <div className="h-28 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-400 flex items-center justify-center relative overflow-hidden">
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.2),transparent_50%)]" />
                   <div className="w-20 h-20 rounded-2xl bg-white/90 shadow-lg flex items-center justify-center overflow-hidden">
-                    {logoUrl && !logoError ? (
+                    {vacancy.logoUrl && !logoError ? (
                       <img 
-                        src={logoUrl} 
+                        src={vacancy.logoUrl} 
                         alt={`${vacancy.company} logo`}
                         className="w-14 h-14 object-contain"
                         onError={() => setLogoError(true)}
@@ -113,7 +72,6 @@ export function VacancyFullView({ vacancy, onClose, onApply, isApplying }: Vacan
                   </div>
                 </div>
                 
-                {/* Close button */}
                 <button
                   onClick={onClose}
                   className="absolute top-3 right-3 w-9 h-9 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/30 transition-colors"
@@ -121,11 +79,20 @@ export function VacancyFullView({ vacancy, onClose, onApply, isApplying }: Vacan
                 >
                   <X className="w-5 h-5" />
                 </button>
+                
+                {vacancy.url && (
+                  <a 
+                    href={vacancy.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="absolute top-3 left-3 w-9 h-9 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/30 transition-colors"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                )}
               </div>
               
-              {/* Scrollable content */}
               <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-                {/* Title and company */}
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900 leading-tight mb-1" data-testid="fullview-title">
                     {vacancy.title}
@@ -135,7 +102,6 @@ export function VacancyFullView({ vacancy, onClose, onApply, isApplying }: Vacan
                   </p>
                 </div>
                 
-                {/* Info cards */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-4 border border-green-100/50">
                     <div className="flex items-center gap-2 text-green-700 mb-1">
@@ -154,7 +120,6 @@ export function VacancyFullView({ vacancy, onClose, onApply, isApplying }: Vacan
                   </div>
                 </div>
                 
-                {/* Employment type */}
                 <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-4 border border-purple-100/50">
                   <div className="flex items-center gap-2 text-purple-700 mb-1">
                     <Briefcase className="w-4 h-4" />
@@ -165,10 +130,8 @@ export function VacancyFullView({ vacancy, onClose, onApply, isApplying }: Vacan
                   </p>
                 </div>
                 
-                {/* Divider */}
                 <div className="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
                 
-                {/* Description */}
                 <div>
                   <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Описание</h3>
                   <p className="text-gray-700 leading-relaxed text-[15px]" data-testid="fullview-description">
@@ -176,7 +139,6 @@ export function VacancyFullView({ vacancy, onClose, onApply, isApplying }: Vacan
                   </p>
                 </div>
                 
-                {/* Tags */}
                 {vacancy.tags && vacancy.tags.length > 0 && (
                   <div>
                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Навыки</h3>
@@ -195,7 +157,6 @@ export function VacancyFullView({ vacancy, onClose, onApply, isApplying }: Vacan
                 )}
               </div>
               
-              {/* Fixed bottom action */}
               <div className="shrink-0 p-5 bg-white/80 backdrop-blur-sm border-t border-gray-100">
                 <Button
                   onClick={onApply}

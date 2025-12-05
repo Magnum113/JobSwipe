@@ -2,46 +2,34 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { VacancyCard, VacancyCardRef } from "@/components/VacancyCard";
 import { VacancyFullView } from "@/components/VacancyFullView";
 import { AnimatePresence } from "framer-motion";
-import { X, Heart, RotateCcw, Briefcase, Filter, Search } from "lucide-react";
+import { X, Heart, RotateCcw, Briefcase, Filter, Search, ChevronDown, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import type { Job, Resume } from "@shared/schema";
+import type { HHJob, HHJobsResponse, Resume } from "@shared/schema";
 
-interface FilterOptions {
-  companies: string[];
-  locations: string[];
+interface HHFilters {
+  text: string;
+  area: string;
+  employment: string;
+  schedule: string;
+  experience: string;
 }
 
-interface Filters {
-  company: string;
-  salaryRange: string;
-  employmentType: string;
-  location: string;
-  keyword: string;
-}
-
-async function fetchUnswipedJobs(filters: Filters): Promise<Job[]> {
+async function fetchHHJobs(filters: HHFilters, batch: number): Promise<HHJobsResponse> {
   const params = new URLSearchParams();
-  if (filters.company && filters.company !== 'all') params.append("company", filters.company);
-  if (filters.salaryRange && filters.salaryRange !== 'all') params.append("salaryRange", filters.salaryRange);
-  if (filters.employmentType && filters.employmentType !== 'all') params.append("employmentType", filters.employmentType);
-  if (filters.location && filters.location !== 'all') params.append("location", filters.location);
-  if (filters.keyword) params.append("keyword", filters.keyword);
+  if (filters.text) params.append("text", filters.text);
+  if (filters.area) params.append("area", filters.area);
+  if (filters.employment && filters.employment !== "all") params.append("employment", filters.employment);
+  if (filters.schedule && filters.schedule !== "all") params.append("schedule", filters.schedule);
+  if (filters.experience && filters.experience !== "all") params.append("experience", filters.experience);
+  params.append("batch", String(batch));
   
-  const response = await fetch(`/api/jobs/unswiped?${params.toString()}`);
+  const response = await fetch(`/api/hh/jobs?${params.toString()}`);
   if (!response.ok) {
     throw new Error("Failed to fetch jobs");
-  }
-  return response.json();
-}
-
-async function fetchFilterOptions(): Promise<FilterOptions> {
-  const response = await fetch("/api/jobs/filter-options");
-  if (!response.ok) {
-    throw new Error("Failed to fetch filter options");
   }
   return response.json();
 }
@@ -52,31 +40,6 @@ async function fetchResume(): Promise<Resume | { content: string }> {
     throw new Error("Failed to fetch resume");
   }
   return response.json();
-}
-
-async function recordSwipe(jobId: number, direction: "left" | "right") {
-  const response = await fetch("/api/swipes", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jobId, direction }),
-  });
-  if (!response.ok) {
-    throw new Error("Failed to record swipe");
-  }
-  return response.json();
-}
-
-async function generateCoverLetter(resume: string, vacancy: Job): Promise<string> {
-  const response = await fetch("/api/cover-letter/generate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ resume, vacancy }),
-  });
-  if (!response.ok) {
-    throw new Error("Failed to generate cover letter");
-  }
-  const data = await response.json();
-  return data.coverLetter;
 }
 
 async function createApplication(data: {
@@ -97,6 +60,29 @@ async function createApplication(data: {
   return response.json();
 }
 
+async function generateCoverLetter(resume: string, vacancy: HHJob): Promise<string> {
+  const response = await fetch("/api/cover-letter/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ 
+      resume, 
+      vacancy: {
+        id: parseInt(vacancy.id) || 0,
+        title: vacancy.title,
+        company: vacancy.company,
+        salary: vacancy.salary,
+        description: vacancy.description,
+        tags: vacancy.tags,
+      }
+    }),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to generate cover letter");
+  }
+  const data = await response.json();
+  return data.coverLetter;
+}
+
 async function updateApplicationCoverLetter(applicationId: number, coverLetter: string) {
   const response = await fetch(`/api/applications/${applicationId}/cover-letter`, {
     method: "PATCH",
@@ -109,18 +95,36 @@ async function updateApplicationCoverLetter(applicationId: number, coverLetter: 
   return response.json();
 }
 
-const EMPLOYMENT_TYPES = [
-  { value: "all", label: "Любой тип" },
-  { value: "full-time", label: "Офис / full-time" },
-  { value: "remote", label: "Удалённая" },
-  { value: "hybrid", label: "Гибридная" },
+const AREAS = [
+  { value: "1", label: "Москва" },
+  { value: "2", label: "Санкт-Петербург" },
+  { value: "113", label: "Вся Россия" },
+  { value: "1001", label: "Екатеринбург" },
+  { value: "4", label: "Новосибирск" },
+  { value: "3", label: "Казань" },
 ];
 
-const SALARY_RANGES = [
-  { value: "all", label: "Любая зарплата" },
-  { value: "under150", label: "до 150k" },
-  { value: "150-200", label: "150k–200k" },
-  { value: "200plus", label: "200k+" },
+const EMPLOYMENT_TYPES = [
+  { value: "all", label: "Любой тип" },
+  { value: "full", label: "Полная занятость" },
+  { value: "part", label: "Частичная занятость" },
+  { value: "project", label: "Проектная работа" },
+];
+
+const SCHEDULES = [
+  { value: "all", label: "Любой график" },
+  { value: "fullDay", label: "Полный день" },
+  { value: "remote", label: "Удалённая работа" },
+  { value: "flexible", label: "Гибкий график" },
+  { value: "shift", label: "Сменный график" },
+];
+
+const EXPERIENCE = [
+  { value: "all", label: "Любой опыт" },
+  { value: "noExperience", label: "Без опыта" },
+  { value: "between1And3", label: "1-3 года" },
+  { value: "between3And6", label: "3-6 лет" },
+  { value: "moreThan6", label: "Более 6 лет" },
 ];
 
 export default function VacanciesPage() {
@@ -130,26 +134,28 @@ export default function VacanciesPage() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [history, setHistory] = useState<number[]>([]);
-  const [expandedVacancy, setExpandedVacancy] = useState<Job | null>(null);
+  const [expandedVacancy, setExpandedVacancy] = useState<HHJob | null>(null);
+  const [swipedIds, setSwipedIds] = useState<Set<string>>(new Set());
+  
+  const [jobs, setJobs] = useState<HHJob[]>([]);
+  const [batch, setBatch] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   
   const cardRef = useRef<VacancyCardRef>(null);
   
-  const [filters, setFilters] = useState<Filters>({
-    company: "all",
-    salaryRange: "all",
-    employmentType: "all",
-    location: "all",
-    keyword: "",
+  const [filters, setFilters] = useState<HHFilters>({
+    text: "маркетинг",
+    area: "1",
+    employment: "all",
+    schedule: "all",
+    experience: "all",
   });
   
-  const { data: filterOptions } = useQuery({
-    queryKey: ["filterOptions"],
-    queryFn: fetchFilterOptions,
-  });
-  
-  const { data: jobs = [], isLoading: jobsLoading } = useQuery({
-    queryKey: ["jobs", "unswiped", filters],
-    queryFn: () => fetchUnswipedJobs(filters),
+  const { data: hhResponse, isLoading: jobsLoading, refetch } = useQuery({
+    queryKey: ["hh-jobs", filters, 1],
+    queryFn: () => fetchHHJobs(filters, 1),
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: resume } = useQuery({
@@ -158,14 +164,23 @@ export default function VacanciesPage() {
   });
 
   useEffect(() => {
+    if (hhResponse) {
+      setJobs(hhResponse.jobs);
+      setHasMore(hhResponse.hasMore);
+      setBatch(1);
+      setCurrentIndex(0);
+      setHistory([]);
+      setSwipedIds(new Set());
+    }
+  }, [hhResponse]);
+
+  useEffect(() => {
     setCurrentIndex(0);
     setHistory([]);
+    setSwipedIds(new Set());
+    setBatch(1);
+    refetch();
   }, [filters]);
-
-  const swipeMutation = useMutation({
-    mutationFn: ({ jobId, direction }: { jobId: number; direction: "left" | "right" }) =>
-      recordSwipe(jobId, direction),
-  });
 
   const applicationMutation = useMutation({
     mutationFn: createApplication,
@@ -174,9 +189,9 @@ export default function VacanciesPage() {
     },
   });
 
-  const currentJobs = jobs.slice(currentIndex);
+  const currentJobs = jobs.slice(currentIndex).filter(job => !swipedIds.has(job.id));
 
-  const lastSwipeRef = useRef<{ jobId: number; time: number } | null>(null);
+  const lastSwipeRef = useRef<{ jobId: string; time: number } | null>(null);
 
   const handleSwipe = useCallback((direction: "left" | "right") => {
     if (isSwiping) {
@@ -204,8 +219,10 @@ export default function VacanciesPage() {
     console.log("SWIPE HANDLED", direction, currentJob.id);
 
     if (direction === "right") {
+      const fakeJobId = Math.abs(parseInt(currentJob.id) || Math.floor(Math.random() * 1000000));
+      
       applicationMutation.mutate({
-        jobId: currentJob.id,
+        jobId: fakeJobId,
         jobTitle: currentJob.title,
         company: currentJob.company,
         coverLetter: null,
@@ -238,13 +255,40 @@ export default function VacanciesPage() {
       });
     }
 
-    swipeMutation.mutate({ jobId: currentJob.id, direction });
+    setSwipedIds(prev => {
+      const next = new Set(Array.from(prev));
+      next.add(currentJob.id);
+      return next;
+    });
     setHistory(prev => [...prev, currentIndex]);
     setCurrentIndex(prev => prev + 1);
     setExpandedVacancy(null);
 
     setTimeout(() => setIsSwiping(false), 300);
-  }, [isSwiping, currentJobs, currentIndex, resume, applicationMutation, swipeMutation, toast, queryClient]);
+  }, [isSwiping, currentJobs, currentIndex, resume, applicationMutation, toast, queryClient]);
+
+  const loadMoreJobs = useCallback(async () => {
+    if (!hasMore || isLoadingMore) return;
+    
+    setIsLoadingMore(true);
+    try {
+      const nextBatch = batch + 1;
+      const response = await fetchHHJobs(filters, nextBatch);
+      
+      setJobs(prev => [...prev, ...response.jobs]);
+      setBatch(nextBatch);
+      setHasMore(response.hasMore);
+    } catch (error) {
+      console.error("Failed to load more jobs:", error);
+      toast({
+        title: "Ошибка",
+        description: "Не удалось загрузить ещё вакансии",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [batch, filters, hasMore, isLoadingMore, toast]);
 
   const triggerSwipe = useCallback(async (direction: "left" | "right") => {
     if (isSwiping || currentJobs.length === 0 || expandedVacancy) return;
@@ -256,28 +300,41 @@ export default function VacanciesPage() {
 
   const handleUndo = useCallback(() => {
     if (history.length === 0 || expandedVacancy || isSwiping) return;
+    
     const previousIndex = history[history.length - 1];
+    const previousJob = jobs[previousIndex];
+    
+    if (previousJob) {
+      setSwipedIds(prev => {
+        const next = new Set(prev);
+        next.delete(previousJob.id);
+        return next;
+      });
+    }
+    
     setHistory(prev => prev.slice(0, -1));
     setCurrentIndex(previousIndex);
-  }, [history, expandedVacancy, isSwiping]);
+  }, [history, expandedVacancy, isSwiping, jobs]);
 
   const handleReset = useCallback(() => {
     setCurrentIndex(0);
     setHistory([]);
-    queryClient.invalidateQueries({ queryKey: ["jobs", "unswiped"] });
-  }, [queryClient]);
+    setSwipedIds(new Set());
+    setBatch(1);
+    refetch();
+  }, [refetch]);
 
-  const updateFilter = useCallback((key: keyof Filters, value: string) => {
+  const updateFilter = useCallback((key: keyof HHFilters, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }));
   }, []);
 
   const clearFilters = useCallback(() => {
     setFilters({
-      company: "all",
-      salaryRange: "all",
-      employmentType: "all",
-      location: "all",
-      keyword: "",
+      text: "",
+      area: "1",
+      employment: "all",
+      schedule: "all",
+      experience: "all",
     });
   }, []);
 
@@ -290,18 +347,20 @@ export default function VacanciesPage() {
     }, 100);
   }, [expandedVacancy, isSwiping, triggerSwipe]);
 
-  const hasActiveFilters = filters.company !== "all" || 
-    filters.salaryRange !== "all" || 
-    filters.employmentType !== "all" || 
-    filters.location !== "all" || 
-    filters.keyword !== "";
+  const hasActiveFilters = filters.text !== "" || 
+    filters.employment !== "all" || 
+    filters.schedule !== "all" || 
+    filters.experience !== "all";
+
+  const showLoadMore = currentJobs.length === 0 && hasMore && jobs.length > 0;
+  const showNoMoreJobs = currentJobs.length === 0 && !hasMore && jobs.length > 0;
 
   if (jobsLoading) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-500">Загрузка вакансий...</p>
+          <p className="text-gray-500">Загрузка вакансий с HH.ru...</p>
         </div>
       </div>
     );
@@ -309,14 +368,12 @@ export default function VacanciesPage() {
 
   return (
     <div className="flex flex-col h-full relative overflow-hidden">
-      {/* Decorative background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-[30%] -left-[20%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-blue-100/40 to-indigo-100/40 blur-3xl" />
         <div className="absolute top-[30%] -right-[20%] w-[50%] h-[70%] rounded-full bg-gradient-to-br from-purple-100/30 to-pink-100/30 blur-3xl" />
         <div className="absolute -bottom-[20%] left-[20%] w-[40%] h-[40%] rounded-full bg-gradient-to-br from-indigo-100/20 to-blue-100/20 blur-3xl" />
       </div>
 
-      {/* Header */}
       <header className="relative z-20 px-4 pt-4 pb-2 shrink-0">
         <div className="flex items-center justify-between max-w-lg mx-auto">
           <div className="flex items-center gap-3">
@@ -324,8 +381,8 @@ export default function VacanciesPage() {
               <Briefcase className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="font-bold text-gray-900">Подбор вакансий</h1>
-              <p className="text-xs text-gray-500">{jobs.length} вакансий</p>
+              <h1 className="font-bold text-gray-900">HH.ru Вакансии</h1>
+              <p className="text-xs text-gray-500">{jobs.length} вакансий загружено</p>
             </div>
           </div>
           <Button
@@ -344,92 +401,84 @@ export default function VacanciesPage() {
         </div>
       </header>
 
-      {/* Filter panel */}
       {isFilterOpen && (
         <div className="relative z-20 px-4 pb-3 shrink-0">
           <div className="max-w-lg mx-auto bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl shadow-gray-900/5 p-4 space-y-3 border border-white/50">
-            {/* Keyword search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
-                placeholder="Поиск по ключевым словам..."
-                value={filters.keyword}
-                onChange={(e) => updateFilter("keyword", e.target.value)}
+                placeholder="Поиск вакансий (например: маркетинг, разработчик)..."
+                value={filters.text}
+                onChange={(e) => updateFilter("text", e.target.value)}
                 className="pl-9 rounded-xl border-gray-200/80 bg-white/80 shadow-sm focus:bg-white h-11"
-                data-testid="input-filter-keyword"
+                data-testid="input-filter-text"
               />
             </div>
             
             <div className="grid grid-cols-2 gap-3">
-              {/* Company filter */}
               <div>
-                <label className="text-xs font-semibold text-gray-500 mb-1.5 block uppercase tracking-wide">Компания</label>
-                <Select value={filters.company} onValueChange={(v) => updateFilter("company", v)}>
+                <label className="text-xs font-semibold text-gray-500 mb-1.5 block uppercase tracking-wide">Регион</label>
+                <Select value={filters.area} onValueChange={(v) => updateFilter("area", v)}>
                   <SelectTrigger 
                     className="rounded-xl border-gray-200/80 h-11 text-sm bg-white shadow-sm hover:shadow-md transition-shadow" 
-                    data-testid="select-company"
+                    data-testid="select-area"
                   >
-                    <SelectValue placeholder="Все компании" />
+                    <SelectValue placeholder="Выберите регион" />
                   </SelectTrigger>
                   <SelectContent className="bg-white border border-gray-100 shadow-xl rounded-xl">
-                    <SelectItem value="all">Все компании</SelectItem>
-                    {filterOptions?.companies.map((company) => (
-                      <SelectItem key={company} value={company}>{company}</SelectItem>
+                    {AREAS.map((area) => (
+                      <SelectItem key={area.value} value={area.value}>{area.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               
-              {/* Location filter */}
               <div>
-                <label className="text-xs font-semibold text-gray-500 mb-1.5 block uppercase tracking-wide">Локация</label>
-                <Select value={filters.location} onValueChange={(v) => updateFilter("location", v)}>
+                <label className="text-xs font-semibold text-gray-500 mb-1.5 block uppercase tracking-wide">Занятость</label>
+                <Select value={filters.employment} onValueChange={(v) => updateFilter("employment", v)}>
                   <SelectTrigger 
                     className="rounded-xl border-gray-200/80 h-11 text-sm bg-white shadow-sm hover:shadow-md transition-shadow" 
-                    data-testid="select-location"
-                  >
-                    <SelectValue placeholder="Любая локация" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border border-gray-100 shadow-xl rounded-xl">
-                    <SelectItem value="all">Любая локация</SelectItem>
-                    {filterOptions?.locations.map((location) => (
-                      <SelectItem key={location} value={location}>{location}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              {/* Salary filter */}
-              <div>
-                <label className="text-xs font-semibold text-gray-500 mb-1.5 block uppercase tracking-wide">Зарплата</label>
-                <Select value={filters.salaryRange} onValueChange={(v) => updateFilter("salaryRange", v)}>
-                  <SelectTrigger 
-                    className="rounded-xl border-gray-200/80 h-11 text-sm bg-white shadow-sm hover:shadow-md transition-shadow" 
-                    data-testid="select-salary"
-                  >
-                    <SelectValue placeholder="Любая зарплата" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border border-gray-100 shadow-xl rounded-xl">
-                    {SALARY_RANGES.map((range) => (
-                      <SelectItem key={range.value} value={range.value}>{range.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              {/* Employment type filter */}
-              <div>
-                <label className="text-xs font-semibold text-gray-500 mb-1.5 block uppercase tracking-wide">Тип занятости</label>
-                <Select value={filters.employmentType} onValueChange={(v) => updateFilter("employmentType", v)}>
-                  <SelectTrigger 
-                    className="rounded-xl border-gray-200/80 h-11 text-sm bg-white shadow-sm hover:shadow-md transition-shadow" 
-                    data-testid="select-employment-type"
+                    data-testid="select-employment"
                   >
                     <SelectValue placeholder="Любой тип" />
                   </SelectTrigger>
                   <SelectContent className="bg-white border border-gray-100 shadow-xl rounded-xl">
                     {EMPLOYMENT_TYPES.map((type) => (
                       <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1.5 block uppercase tracking-wide">График</label>
+                <Select value={filters.schedule} onValueChange={(v) => updateFilter("schedule", v)}>
+                  <SelectTrigger 
+                    className="rounded-xl border-gray-200/80 h-11 text-sm bg-white shadow-sm hover:shadow-md transition-shadow" 
+                    data-testid="select-schedule"
+                  >
+                    <SelectValue placeholder="Любой график" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border border-gray-100 shadow-xl rounded-xl">
+                    {SCHEDULES.map((schedule) => (
+                      <SelectItem key={schedule.value} value={schedule.value}>{schedule.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1.5 block uppercase tracking-wide">Опыт</label>
+                <Select value={filters.experience} onValueChange={(v) => updateFilter("experience", v)}>
+                  <SelectTrigger 
+                    className="rounded-xl border-gray-200/80 h-11 text-sm bg-white shadow-sm hover:shadow-md transition-shadow" 
+                    data-testid="select-experience"
+                  >
+                    <SelectValue placeholder="Любой опыт" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border border-gray-100 shadow-xl rounded-xl">
+                    {EXPERIENCE.map((exp) => (
+                      <SelectItem key={exp.value} value={exp.value}>{exp.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -451,7 +500,6 @@ export default function VacanciesPage() {
         </div>
       )}
 
-      {/* Cards container */}
       <div className="flex-1 flex items-center justify-center relative z-10 px-4 pb-36">
         <div className="relative w-full max-w-[400px] h-[480px] flex justify-center">
           <AnimatePresence>
@@ -484,45 +532,81 @@ export default function VacanciesPage() {
             })}
           </AnimatePresence>
           
-          {currentJobs.length === 0 && (
+          {showLoadMore && (
+             <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-white/60 backdrop-blur-sm rounded-[28px] border-2 border-dashed border-gray-200">
+                <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-4 rounded-2xl shadow-lg mb-4">
+                  <ChevronDown className="w-8 h-8 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  Показать ещё вакансии?
+                </h3>
+                <p className="text-gray-500 mb-6">
+                  Вы просмотрели все {jobs.length} загруженных вакансий
+                </p>
+                <Button 
+                  onClick={loadMoreJobs}
+                  disabled={isLoadingMore}
+                  className="rounded-full px-8 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700"
+                  data-testid="button-load-more"
+                >
+                  {isLoadingMore ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Загрузка...
+                    </>
+                  ) : (
+                    "Показать ещё вакансии"
+                  )}
+                </Button>
+             </div>
+          )}
+          
+          {showNoMoreJobs && (
+             <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-white/60 backdrop-blur-sm rounded-[28px] border-2 border-dashed border-gray-200">
+                <div className="bg-gradient-to-br from-gray-400 to-gray-500 p-4 rounded-2xl shadow-lg mb-4">
+                  <Briefcase className="w-8 h-8 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  Больше вакансий нет
+                </h3>
+                <p className="text-gray-500 mb-6">
+                  Вы просмотрели все вакансии по этому запросу
+                </p>
+                <Button 
+                  onClick={handleReset}
+                  className="rounded-full px-8"
+                  variant="outline"
+                  data-testid="button-reset"
+                >
+                  Начать заново
+                </Button>
+             </div>
+          )}
+          
+          {currentJobs.length === 0 && jobs.length === 0 && (
              <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-white/60 backdrop-blur-sm rounded-[28px] border-2 border-dashed border-gray-200">
                 <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-4 rounded-2xl shadow-lg mb-4">
                   <Briefcase className="w-8 h-8 text-white" />
                 </div>
                 <h3 className="text-xl font-bold text-gray-900 mb-2">
-                  {hasActiveFilters ? "Ничего не найдено" : "Вакансии закончились!"}
+                  Ничего не найдено
                 </h3>
                 <p className="text-gray-500 mb-6">
-                  {hasActiveFilters 
-                    ? "Попробуйте изменить параметры фильтра" 
-                    : "Вы просмотрели все доступные позиции."
-                  }
+                  Попробуйте изменить параметры поиска
                 </p>
-                {hasActiveFilters ? (
-                  <Button 
-                    onClick={clearFilters} 
-                    className="rounded-full px-8"
-                    variant="outline"
-                    data-testid="button-clear-filters-empty"
-                  >
-                    Сбросить фильтры
-                  </Button>
-                ) : (
-                  <Button 
-                    onClick={handleReset} 
-                    className="rounded-full px-8"
-                    variant="outline"
-                    data-testid="button-reset"
-                  >
-                    Начать заново
-                  </Button>
-                )}
+                <Button 
+                  onClick={clearFilters} 
+                  className="rounded-full px-8"
+                  variant="outline"
+                  data-testid="button-clear-filters-empty"
+                >
+                  Сбросить фильтры
+                </Button>
              </div>
           )}
         </div>
       </div>
 
-      {/* Fixed swipe action buttons */}
       <div className="fixed bottom-[72px] left-0 right-0 z-40 flex justify-center items-center gap-6 py-3 bg-gradient-to-t from-white via-white/90 to-transparent">
         <Button
           size="icon"
@@ -558,7 +642,6 @@ export default function VacanciesPage() {
         </Button>
       </div>
 
-      {/* Full view modal */}
       <VacancyFullView 
         vacancy={expandedVacancy}
         onClose={() => setExpandedVacancy(null)}

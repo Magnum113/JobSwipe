@@ -1,12 +1,12 @@
 import { useRef, useCallback, useEffect, useState, forwardRef, useImperativeHandle } from "react";
 import { motion, PanInfo, useMotionValue, useTransform, useAnimation } from "framer-motion";
-import { Building2, Wallet, MapPin, Clock } from "lucide-react";
+import { Building2, Wallet, MapPin, Clock, ExternalLink } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { Job } from "@shared/schema";
+import type { HHJob } from "@shared/schema";
 
 interface VacancyCardProps {
-  job: Job;
+  job: HHJob;
   onSwipe: (direction: "left" | "right") => void;
   onExpand: () => void;
   active: boolean;
@@ -17,46 +17,11 @@ export interface VacancyCardRef {
 }
 
 const employmentTypeLabels: Record<string, string> = {
-  "full-time": "Офис",
+  "full-time": "Полный день",
   "remote": "Удалённо",
   "hybrid": "Гибрид",
+  "part-time": "Частичная",
 };
-
-const companyDomains: Record<string, string> = {
-  "Ozon": "ozon.ru",
-  "Wildberries": "wildberries.ru",
-  "Yandex": "yandex.ru",
-  "Yandex Cloud": "cloud.yandex.ru",
-  "Яндекс Маркет": "market.yandex.ru",
-  "Avito": "avito.ru",
-  "VK": "vk.com",
-  "VK Play": "vkplay.ru",
-  "Tinkoff": "tinkoff.ru",
-  "Тинькофф": "tinkoff.ru",
-  "T-Bank": "tinkoff.ru",
-  "Сбер": "sber.ru",
-  "СберМаркет": "sbermarket.ru",
-  "Lamoda": "lamoda.ru",
-  "X5 Tech": "x5.ru",
-  "Mail.ru Group": "mail.ru",
-  "Magnit Tech": "magnit.ru",
-  "Циан": "cian.ru",
-  "05.ru": "05.ru",
-  "Самокат": "samokat.ru",
-  "Delivery Club": "delivery-club.ru",
-  "Skillbox": "skillbox.ru",
-  "Skyeng": "skyeng.ru",
-  "Золотое Яблоко": "goldapple.ru",
-  "Мегамаркет": "megamarket.ru",
-};
-
-function getCompanyLogoUrl(company: string): string {
-  const domain = companyDomains[company];
-  if (domain) {
-    return `https://api.companyenrich.com/logo/${domain}`;
-  }
-  return "";
-}
 
 export const VacancyCard = forwardRef<VacancyCardRef, VacancyCardProps>(
   ({ job, onSwipe, onExpand, active }, ref) => {
@@ -74,7 +39,6 @@ export const VacancyCard = forwardRef<VacancyCardRef, VacancyCardProps>(
     const nopeOpacity = useTransform(x, [-150, -20], [1, 0]);
 
     const [logoError, setLogoError] = useState(false);
-    const logoUrl = getCompanyLogoUrl(job.company);
 
     useEffect(() => {
       isMounted.current = true;
@@ -214,12 +178,29 @@ export const VacancyCard = forwardRef<VacancyCardRef, VacancyCardProps>(
           <CardContent className="p-0 h-full flex flex-col relative z-10">
             <div className="h-24 bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 flex items-center justify-center relative overflow-hidden">
               <div className="w-16 h-16 rounded-2xl bg-white/90 shadow-lg flex items-center justify-center overflow-hidden">
-                {!logoError && logoUrl ? (
-                  <img src={logoUrl} alt={job.company} className="w-12 h-12 object-contain" onError={() => setLogoError(true)} />
+                {!logoError && job.logoUrl ? (
+                  <img 
+                    src={job.logoUrl} 
+                    alt={job.company} 
+                    className="w-14 h-14 object-contain" 
+                    onError={() => setLogoError(true)} 
+                  />
                 ) : (
                   <Building2 className="w-8 h-8 text-indigo-500" />
                 )}
               </div>
+              
+              {job.url && (
+                <a 
+                  href={job.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute top-3 right-3 p-2 bg-white/80 hover:bg-white rounded-full shadow-md transition-all hover:scale-110"
+                >
+                  <ExternalLink className="w-4 h-4 text-indigo-600" />
+                </a>
+              )}
             </div>
 
             <div className="px-6 py-5 flex-1 flex flex-col gap-4">
