@@ -176,18 +176,16 @@ export const VacancyCard = forwardRef<VacancyCardRef, VacancyCardProps>(
           </motion.div>
 
           <CardContent className="p-0 h-full flex flex-col relative z-10">
-            <div className="h-24 bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 flex items-center justify-center relative overflow-hidden">
+            <div className="h-20 bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 flex items-center justify-center relative overflow-hidden">
               {!logoError && job.logoUrl ? (
                 <img 
                   src={job.logoUrl} 
                   alt={job.company} 
-                  className="h-14 max-w-[120px] object-contain" 
+                  className="max-h-12 max-w-[100px] object-contain" 
                   onError={() => setLogoError(true)} 
                 />
               ) : (
-                <div className="w-14 h-14 rounded-xl bg-white/90 shadow-md flex items-center justify-center">
-                  <Building2 className="w-7 h-7 text-indigo-500" />
-                </div>
+                <Building2 className="w-8 h-8 text-indigo-400" />
               )}
               
               {job.url && (

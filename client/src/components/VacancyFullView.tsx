@@ -56,19 +56,17 @@ export function VacancyFullView({ vacancy, onClose, onApply, isApplying }: Vacan
               onClick={(e) => e.stopPropagation()}
             >
               <div className="relative shrink-0">
-                <div className="h-28 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-400 flex items-center justify-center relative overflow-hidden">
+                <div className="h-24 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-400 flex items-center justify-center relative overflow-hidden">
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.2),transparent_50%)]" />
                   {vacancy.logoUrl && !logoError ? (
                     <img 
                       src={vacancy.logoUrl} 
                       alt={`${vacancy.company} logo`}
-                      className="h-16 max-w-[140px] object-contain"
+                      className="max-h-14 max-w-[120px] object-contain"
                       onError={() => setLogoError(true)}
                     />
                   ) : (
-                    <div className="w-16 h-16 rounded-xl bg-white/90 shadow-md flex items-center justify-center">
-                      <Building2 className="w-8 h-8 text-white" />
-                    </div>
+                    <Building2 className="w-10 h-10 text-white/80" />
                   )}
                 </div>
                 
