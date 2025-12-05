@@ -6,10 +6,6 @@ import { z } from "zod";
 import { generateCoverLetter } from "./gemini";
 
 const BATCH_SIZE = 30;
-const HH_PER_PAGE = 100;
-
-let hhJobsCache: { jobs: HHJob[]; timestamp: number; key: string } | null = null;
-const CACHE_TTL = 5 * 60 * 1000;
 
 interface HHVacancy {
   id: string;
@@ -302,76 +298,59 @@ export async function registerRoutes(
   await storage.seedJobs(SEED_JOBS);
 
   // HH.ru API - Get jobs with batch pagination
+  // Each batch = one HH API page with per_page=30
   app.get("/api/hh/jobs", async (req, res) => {
     try {
       const text = (req.query.text as string) || "маркетинг";
-      const area = (req.query.area as string) || "1"; // 1 = Moscow
+      const area = (req.query.area as string) || "1";
       const employment = req.query.employment as string | undefined;
       const schedule = req.query.schedule as string | undefined;
       const experience = req.query.experience as string | undefined;
       const batch = parseInt(req.query.batch as string) || 1;
       
-      const cacheKey = `${text}-${area}-${employment || ""}-${schedule || ""}-${experience || ""}`;
-      const now = Date.now();
+      const page = batch - 1;
       
-      let allJobs: HHJob[];
+      const params = new URLSearchParams({
+        text,
+        area,
+        per_page: String(BATCH_SIZE),
+        page: String(page),
+      });
       
-      if (hhJobsCache && hhJobsCache.key === cacheKey && (now - hhJobsCache.timestamp) < CACHE_TTL) {
-        allJobs = hhJobsCache.jobs;
-        console.log(`[HH API] Using cached ${allJobs.length} jobs for key: ${cacheKey}`);
-      } else {
-        const params = new URLSearchParams({
-          text,
-          area,
-          per_page: String(HH_PER_PAGE),
-          page: "0",
-        });
-        
-        if (employment) params.append("employment", employment);
-        if (schedule) params.append("schedule", schedule);
-        if (experience) params.append("experience", experience);
-        
-        const url = `https://api.hh.ru/vacancies?${params.toString()}`;
-        console.log(`[HH API] Fetching: ${url}`);
-        
-        const response = await fetch(url, {
-          headers: {
-            "User-Agent": "JobSwipe/1.0 (job-search-app)",
-            "Accept": "application/json",
-          },
-        });
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`[HH API] Error ${response.status}: ${errorText}`);
-          throw new Error(`HH API error: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        const items = data.items as HHVacancy[];
-        
-        allJobs = items.map(adaptHHVacancy);
-        
-        hhJobsCache = {
-          jobs: allJobs,
-          timestamp: now,
-          key: cacheKey,
-        };
-        
-        console.log(`[HH API] Fetched ${allJobs.length} jobs, total found: ${data.found}`);
+      if (employment && employment !== "all") params.append("employment", employment);
+      if (schedule && schedule !== "all") params.append("schedule", schedule);
+      if (experience && experience !== "all") params.append("experience", experience);
+      
+      const url = `https://api.hh.ru/vacancies?${params.toString()}`;
+      console.log(`[HH API] Fetching batch ${batch} (page ${page}): ${url}`);
+      
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "JobSwipe/1.0 (job-search-app)",
+          "Accept": "application/json",
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[HH API] Error ${response.status}: ${errorText}`);
+        throw new Error(`HH API error: ${response.status}`);
       }
       
-      const startIndex = (batch - 1) * BATCH_SIZE;
-      const endIndex = startIndex + BATCH_SIZE;
-      const batchJobs = allJobs.slice(startIndex, endIndex);
-      const hasMore = endIndex < allJobs.length;
+      const data = await response.json();
+      const items = data.items as HHVacancy[];
+      const totalFound = data.found as number;
+      const pages = data.pages as number;
       
-      console.log(`[HH API] Returning batch ${batch}: jobs ${startIndex}-${endIndex}, hasMore: ${hasMore}`);
+      const jobs = items.map(adaptHHVacancy);
+      const hasMore = batch < pages;
+      
+      console.log(`[HH API] Batch ${batch}: got ${jobs.length} jobs, total found: ${totalFound}, pages: ${pages}, hasMore: ${hasMore}`);
       
       const result: HHJobsResponse = {
-        jobs: batchJobs,
+        jobs,
         hasMore,
-        total: allJobs.length,
+        total: totalFound,
         batch,
       };
       

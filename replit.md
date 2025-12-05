@@ -46,7 +46,10 @@ Preferred communication style: Simple, everyday language.
 
 **API Design**
 - RESTful endpoints for jobs, swipes, resumes, and applications
-- `/api/jobs/unswiped` - Fetches jobs not yet swiped by the user
+- `/api/hh/jobs` - **HH.ru Integration** - Fetches real vacancies from HeadHunter API with batch pagination (30 jobs per batch)
+  - Query params: `text`, `area`, `employment`, `schedule`, `experience`, `batch`
+  - Returns: `{ jobs: HHJob[], hasMore: boolean, total: number, batch: number }`
+- `/api/jobs/unswiped` - Fetches local jobs not yet swiped (fallback/seed data)
 - `/api/jobs/search` - Search with filters (company, salary, title, keywords)
 - `/api/swipes` - Records left/right swipe decisions
 - `/api/resume` - GET/POST endpoints for resume management
