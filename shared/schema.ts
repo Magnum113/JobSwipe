@@ -80,3 +80,23 @@ export type Resume = typeof resumes.$inferSelect;
 export type InsertResume = z.infer<typeof insertResumeSchema>;
 export type Application = typeof applications.$inferSelect;
 export type InsertApplication = z.infer<typeof insertApplicationSchema>;
+
+export interface HHJob {
+  id: string;
+  title: string;
+  company: string;
+  salary: string;
+  description: string;
+  location: string;
+  employmentType: string;
+  tags: string[];
+  url?: string;
+  logoUrl?: string;
+}
+
+export interface HHJobsResponse {
+  jobs: HHJob[];
+  hasMore: boolean;
+  total: number;
+  batch: number;
+}
