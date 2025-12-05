@@ -165,9 +165,6 @@ export default function VacanciesPage() {
   const swipeMutation = useMutation({
     mutationFn: ({ jobId, direction }: { jobId: number; direction: "left" | "right" }) =>
       recordSwipe(jobId, direction),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["jobs", "unswiped"] });
-    },
   });
 
   const applicationMutation = useMutation({
