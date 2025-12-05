@@ -66,6 +66,11 @@ function adaptHHVacancy(vacancy: HHVacancy): HHJob {
   const description = vacancy.snippet.responsibility || vacancy.snippet.requirement || "Описание отсутствует";
   const cleanDescription = description.replace(/<[^>]*>/g, "");
   
+  let logoUrl = vacancy.employer.logo_urls?.["240"] || vacancy.employer.logo_urls?.original || undefined;
+  if (logoUrl && logoUrl.includes("employer-logo-round")) {
+    logoUrl = logoUrl.replace("employer-logo-round", "employer-logo");
+  }
+  
   return {
     id: vacancy.id,
     title: vacancy.name,
@@ -76,7 +81,7 @@ function adaptHHVacancy(vacancy: HHVacancy): HHJob {
     employmentType: mapEmploymentType(vacancy.employment, vacancy.schedule),
     tags: vacancy.professional_roles.map(role => role.name).slice(0, 5),
     url: vacancy.alternate_url,
-    logoUrl: vacancy.employer.logo_urls?.["240"] || vacancy.employer.logo_urls?.original || undefined,
+    logoUrl,
   };
 }
 
