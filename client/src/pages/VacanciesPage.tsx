@@ -179,12 +179,32 @@ export default function VacanciesPage() {
 
   const currentJobs = jobs.slice(currentIndex);
 
+  const lastSwipeRef = useRef<{ jobId: number; time: number } | null>(null);
+
   const handleSwipe = useCallback((direction: "left" | "right") => {
-    if (isSwiping) return;
-    if (currentJobs.length === 0) return;
+    if (isSwiping) {
+      console.log("SWIPE BLOCKED in parent - isSwiping=true");
+      return;
+    }
+    if (currentJobs.length === 0) {
+      console.log("SWIPE BLOCKED in parent - no jobs");
+      return;
+    }
     
-    setIsSwiping(true);
     const currentJob = currentJobs[0];
+    const now = Date.now();
+    
+    if (lastSwipeRef.current && 
+        lastSwipeRef.current.jobId === currentJob.id && 
+        now - lastSwipeRef.current.time < 500) {
+      console.log("SWIPE BLOCKED in parent - duplicate for same job", currentJob.id);
+      return;
+    }
+    
+    lastSwipeRef.current = { jobId: currentJob.id, time: now };
+    setIsSwiping(true);
+    
+    console.log("SWIPE HANDLED", direction, currentJob.id);
 
     if (direction === "right") {
       applicationMutation.mutate({
@@ -226,7 +246,7 @@ export default function VacanciesPage() {
     setCurrentIndex(prev => prev + 1);
     setExpandedVacancy(null);
 
-    setTimeout(() => setIsSwiping(false), 150);
+    setTimeout(() => setIsSwiping(false), 300);
   }, [isSwiping, currentJobs, currentIndex, resume, applicationMutation, swipeMutation, toast, queryClient]);
 
   const triggerSwipe = useCallback(async (direction: "left" | "right") => {
