@@ -152,35 +152,50 @@ export default function VacanciesPage() {
     experience: "all",
   });
   
-  const { data: hhResponse, isLoading: jobsLoading, refetch } = useQuery({
-    queryKey: ["hh-jobs", filters, 1],
-    queryFn: () => fetchHHJobs(filters, 1),
-    staleTime: 5 * 60 * 1000,
-  });
+  const [appliedFilters, setAppliedFilters] = useState<HHFilters | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
 
   const { data: resume } = useQuery({
     queryKey: ["resume"],
     queryFn: fetchResume,
   });
 
-  useEffect(() => {
-    if (hhResponse) {
-      setJobs(hhResponse.jobs);
-      setHasMore(hhResponse.hasMore);
+  const executeSearch = useCallback(async (searchFilters: HHFilters) => {
+    setIsSearching(true);
+    try {
+      const response = await fetchHHJobs(searchFilters, 1);
+      setJobs(response.jobs);
+      setHasMore(response.hasMore);
       setBatch(1);
       setCurrentIndex(0);
       setHistory([]);
       setSwipedIds(new Set());
+      setAppliedFilters(searchFilters);
+    } catch (error) {
+      console.error("Search failed:", error);
+    } finally {
+      setIsSearching(false);
     }
-  }, [hhResponse]);
+  }, []);
 
   useEffect(() => {
-    setCurrentIndex(0);
-    setHistory([]);
-    setSwipedIds(new Set());
-    setBatch(1);
-    refetch();
-  }, [filters]);
+    if (!initialLoadDone) {
+      const initialFilters: HHFilters = {
+        text: "маркетинг",
+        area: "1",
+        employment: "all",
+        schedule: "all",
+        experience: "all",
+      };
+      executeSearch(initialFilters);
+      setInitialLoadDone(true);
+    }
+  }, [initialLoadDone, executeSearch]);
+
+  const handleSearch = useCallback(() => {
+    executeSearch(filters);
+  }, [executeSearch, filters]);
 
   const applicationMutation = useMutation({
     mutationFn: createApplication,
@@ -268,12 +283,12 @@ export default function VacanciesPage() {
   }, [isSwiping, currentJobs, currentIndex, resume, applicationMutation, toast, queryClient]);
 
   const loadMoreJobs = useCallback(async () => {
-    if (!hasMore || isLoadingMore) return;
+    if (!hasMore || isLoadingMore || !appliedFilters) return;
     
     setIsLoadingMore(true);
     try {
       const nextBatch = batch + 1;
-      const response = await fetchHHJobs(filters, nextBatch);
+      const response = await fetchHHJobs(appliedFilters, nextBatch);
       
       setJobs(prev => [...prev, ...response.jobs]);
       setBatch(nextBatch);
@@ -288,7 +303,7 @@ export default function VacanciesPage() {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [batch, filters, hasMore, isLoadingMore, toast]);
+  }, [batch, appliedFilters, hasMore, isLoadingMore, toast]);
 
   const triggerSwipe = useCallback(async (direction: "left" | "right") => {
     if (isSwiping || currentJobs.length === 0 || expandedVacancy) return;
@@ -317,26 +332,26 @@ export default function VacanciesPage() {
   }, [history, expandedVacancy, isSwiping, jobs]);
 
   const handleReset = useCallback(() => {
-    setCurrentIndex(0);
-    setHistory([]);
-    setSwipedIds(new Set());
-    setBatch(1);
-    refetch();
-  }, [refetch]);
+    if (appliedFilters) {
+      executeSearch(appliedFilters);
+    }
+  }, [appliedFilters, executeSearch]);
 
   const updateFilter = useCallback((key: keyof HHFilters, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }));
   }, []);
 
   const clearFilters = useCallback(() => {
-    setFilters({
+    const clearedFilters: HHFilters = {
       text: "",
       area: "1",
       employment: "all",
       schedule: "all",
       experience: "all",
-    });
-  }, []);
+    };
+    setFilters(clearedFilters);
+    executeSearch(clearedFilters);
+  }, [executeSearch]);
 
   const handleApplyFromFullView = useCallback(async () => {
     if (!expandedVacancy || isSwiping) return;
@@ -355,7 +370,7 @@ export default function VacanciesPage() {
   const showLoadMore = currentJobs.length === 0 && hasMore && jobs.length > 0;
   const showNoMoreJobs = currentJobs.length === 0 && !hasMore && jobs.length > 0;
 
-  if (jobsLoading) {
+  if (isSearching && jobs.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
@@ -485,17 +500,36 @@ export default function VacanciesPage() {
               </div>
             </div>
             
-            {hasActiveFilters && (
+            <div className="flex gap-2 pt-2">
               <Button
-                variant="ghost"
-                size="sm"
-                onClick={clearFilters}
-                className="w-full text-gray-500 hover:text-gray-700 hover:bg-gray-100/50"
-                data-testid="button-clear-filters"
+                onClick={handleSearch}
+                disabled={isSearching}
+                className="flex-1 rounded-xl h-11 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 shadow-lg shadow-indigo-500/25"
+                data-testid="button-search"
               >
-                Сбросить фильтры
+                {isSearching ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Поиск...
+                  </>
+                ) : (
+                  <>
+                    <Search className="w-4 h-4 mr-2" />
+                    Поиск
+                  </>
+                )}
               </Button>
-            )}
+              {hasActiveFilters && (
+                <Button
+                  variant="outline"
+                  onClick={clearFilters}
+                  className="rounded-xl h-11 px-4 text-gray-500 hover:text-gray-700"
+                  data-testid="button-clear-filters"
+                >
+                  Сбросить
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       )}
