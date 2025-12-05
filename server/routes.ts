@@ -1,9 +1,88 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertJobSchema, insertSwipeSchema, insertApplicationSchema, type Job } from "@shared/schema";
+import { insertJobSchema, insertSwipeSchema, insertApplicationSchema, type Job, type HHJob, type HHJobsResponse } from "@shared/schema";
 import { z } from "zod";
 import { generateCoverLetter } from "./gemini";
+
+const BATCH_SIZE = 30;
+const HH_PER_PAGE = 100;
+
+let hhJobsCache: { jobs: HHJob[]; timestamp: number; key: string } | null = null;
+const CACHE_TTL = 5 * 60 * 1000;
+
+interface HHVacancy {
+  id: string;
+  name: string;
+  employer: {
+    name: string;
+    logo_urls?: { original?: string; "90"?: string; "240"?: string } | null;
+  };
+  salary: {
+    from: number | null;
+    to: number | null;
+    currency: string;
+  } | null;
+  snippet: {
+    requirement: string | null;
+    responsibility: string | null;
+  };
+  area: {
+    name: string;
+  };
+  schedule: {
+    id: string;
+    name: string;
+  } | null;
+  employment: {
+    id: string;
+    name: string;
+  } | null;
+  professional_roles: Array<{ name: string }>;
+  alternate_url: string;
+}
+
+function formatSalary(salary: HHVacancy["salary"]): string {
+  if (!salary) return "Зарплата не указана";
+  
+  const { from, to, currency } = salary;
+  const currencySymbol = currency === "RUR" ? "₽" : currency;
+  
+  if (from && to) {
+    return `${Math.round(from / 1000)}–${Math.round(to / 1000)}k ${currencySymbol}`;
+  } else if (from) {
+    return `от ${Math.round(from / 1000)}k ${currencySymbol}`;
+  } else if (to) {
+    return `до ${Math.round(to / 1000)}k ${currencySymbol}`;
+  }
+  return "Зарплата не указана";
+}
+
+function mapEmploymentType(employment: HHVacancy["employment"], schedule: HHVacancy["schedule"]): string {
+  if (schedule?.id === "remote") return "remote";
+  if (schedule?.id === "flexible") return "hybrid";
+  if (employment?.id === "full") return "full-time";
+  if (employment?.id === "part") return "part-time";
+  return "full-time";
+}
+
+function adaptHHVacancy(vacancy: HHVacancy): HHJob {
+  const description = vacancy.snippet.responsibility || vacancy.snippet.requirement || "Описание отсутствует";
+  const cleanDescription = description.replace(/<[^>]*>/g, "");
+  
+  return {
+    id: vacancy.id,
+    title: vacancy.name,
+    company: vacancy.employer.name,
+    salary: formatSalary(vacancy.salary),
+    description: cleanDescription,
+    location: vacancy.area.name,
+    employmentType: mapEmploymentType(vacancy.employment, vacancy.schedule),
+    tags: vacancy.professional_roles.map(role => role.name).slice(0, 5),
+    url: vacancy.alternate_url,
+    logoUrl: vacancy.employer.logo_urls?.["240"] || vacancy.employer.logo_urls?.original || undefined,
+  };
+}
 
 const SEED_JOBS = [
   {
@@ -221,6 +300,87 @@ export async function registerRoutes(
   
   // Seed jobs on startup
   await storage.seedJobs(SEED_JOBS);
+
+  // HH.ru API - Get jobs with batch pagination
+  app.get("/api/hh/jobs", async (req, res) => {
+    try {
+      const text = (req.query.text as string) || "маркетинг";
+      const area = (req.query.area as string) || "1"; // 1 = Moscow
+      const employment = req.query.employment as string | undefined;
+      const schedule = req.query.schedule as string | undefined;
+      const experience = req.query.experience as string | undefined;
+      const batch = parseInt(req.query.batch as string) || 1;
+      
+      const cacheKey = `${text}-${area}-${employment || ""}-${schedule || ""}-${experience || ""}`;
+      const now = Date.now();
+      
+      let allJobs: HHJob[];
+      
+      if (hhJobsCache && hhJobsCache.key === cacheKey && (now - hhJobsCache.timestamp) < CACHE_TTL) {
+        allJobs = hhJobsCache.jobs;
+        console.log(`[HH API] Using cached ${allJobs.length} jobs for key: ${cacheKey}`);
+      } else {
+        const params = new URLSearchParams({
+          text,
+          area,
+          per_page: String(HH_PER_PAGE),
+          page: "0",
+        });
+        
+        if (employment) params.append("employment", employment);
+        if (schedule) params.append("schedule", schedule);
+        if (experience) params.append("experience", experience);
+        
+        const url = `https://api.hh.ru/vacancies?${params.toString()}`;
+        console.log(`[HH API] Fetching: ${url}`);
+        
+        const response = await fetch(url, {
+          headers: {
+            "User-Agent": "JobSwipe/1.0 (job-search-app)",
+            "Accept": "application/json",
+          },
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`[HH API] Error ${response.status}: ${errorText}`);
+          throw new Error(`HH API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        const items = data.items as HHVacancy[];
+        
+        allJobs = items.map(adaptHHVacancy);
+        
+        hhJobsCache = {
+          jobs: allJobs,
+          timestamp: now,
+          key: cacheKey,
+        };
+        
+        console.log(`[HH API] Fetched ${allJobs.length} jobs, total found: ${data.found}`);
+      }
+      
+      const startIndex = (batch - 1) * BATCH_SIZE;
+      const endIndex = startIndex + BATCH_SIZE;
+      const batchJobs = allJobs.slice(startIndex, endIndex);
+      const hasMore = endIndex < allJobs.length;
+      
+      console.log(`[HH API] Returning batch ${batch}: jobs ${startIndex}-${endIndex}, hasMore: ${hasMore}`);
+      
+      const result: HHJobsResponse = {
+        jobs: batchJobs,
+        hasMore,
+        total: allJobs.length,
+        batch,
+      };
+      
+      res.json(result);
+    } catch (error) {
+      console.error("[HH API] Error:", error);
+      res.status(500).json({ error: "Failed to fetch jobs from HH.ru", jobs: [], hasMore: false, total: 0, batch: 1 });
+    }
+  });
 
   // Get unswiped jobs with optional filters
   app.get("/api/jobs/unswiped", async (req, res) => {
