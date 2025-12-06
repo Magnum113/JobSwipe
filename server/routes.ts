@@ -588,10 +588,14 @@ export async function registerRoutes(
     }
   });
 
-  // Get all applications
+  // Get applications for a user
   app.get("/api/applications", async (req, res) => {
     try {
-      const applications = await storage.getAllApplications();
+      const userId = req.query.userId as string | undefined;
+      if (!userId) {
+        return res.status(400).json({ error: "User ID is required" });
+      }
+      const applications = await storage.getApplicationsByUser(userId);
       res.json(applications);
     } catch (error) {
       console.error("Error fetching applications:", error);

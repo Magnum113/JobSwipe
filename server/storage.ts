@@ -39,6 +39,7 @@ export interface IStorage {
   saveManualResume(userId: string, content: string): Promise<Resume>;
   
   createApplication(application: InsertApplication): Promise<Application>;
+  getApplicationsByUser(userId: string): Promise<Application[]>;
   getAllApplications(): Promise<Application[]>;
   updateApplicationCoverLetter(id: number, coverLetter: string): Promise<Application | undefined>;
 }
@@ -266,6 +267,13 @@ export class DbStorage implements IStorage {
   async createApplication(application: InsertApplication): Promise<Application> {
     const [created] = await db.insert(applications).values(application).returning();
     return created;
+  }
+
+  async getApplicationsByUser(userId: string): Promise<Application[]> {
+    return await db.select()
+      .from(applications)
+      .where(eq(applications.userId, userId))
+      .orderBy(desc(applications.appliedAt));
   }
 
   async getAllApplications(): Promise<Application[]> {

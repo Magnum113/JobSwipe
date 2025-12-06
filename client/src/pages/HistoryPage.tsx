@@ -1,12 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { History, Building2, Calendar, FileText, ChevronDown, ChevronUp, CheckCircle, Loader2 } from "lucide-react";
+import { History, Building2, Calendar, FileText, ChevronDown, ChevronUp, CheckCircle, Loader2, LogIn } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Application } from "@shared/schema";
 
-async function fetchApplications(): Promise<Application[]> {
-  const response = await fetch("/api/applications");
+async function fetchApplications(userId: string): Promise<Application[]> {
+  const response = await fetch(`/api/applications?userId=${userId}`);
   if (!response.ok) {
     throw new Error("Failed to fetch applications");
   }
@@ -97,11 +97,45 @@ function ApplicationCard({ application }: { application: Application }) {
 }
 
 export default function HistoryPage() {
+  const [userId, setUserId] = useState<string | null>(() => localStorage.getItem("userId"));
+  
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlUserId = params.get("userId");
+    if (urlUserId) {
+      localStorage.setItem("userId", urlUserId);
+      setUserId(urlUserId);
+    }
+  }, []);
+
   const { data: applications = [], isLoading } = useQuery({
-    queryKey: ["applications"],
-    queryFn: fetchApplications,
+    queryKey: ["applications", userId],
+    queryFn: () => fetchApplications(userId!),
     refetchInterval: 3000,
+    enabled: !!userId,
   });
+
+  if (!userId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-6 text-center">
+        <div className="p-4 bg-gray-100 rounded-full mb-4">
+          <LogIn className="w-8 h-8 text-gray-400" />
+        </div>
+        <h3 className="text-lg font-bold text-gray-900 mb-2">Требуется авторизация</h3>
+        <p className="text-gray-500 max-w-xs mb-6">
+          Для просмотра истории откликов необходимо авторизоваться через hh.ru
+        </p>
+        <a
+          href="/auth/hh/start"
+          className="flex items-center justify-center gap-3 py-3 px-6 bg-[#D6001C] hover:bg-[#B8001A] text-white font-semibold rounded-xl shadow-lg transition-all"
+          data-testid="button-hh-auth-history"
+        >
+          <img src="/hh-logo.svg" alt="hh.ru" className="h-5" />
+          Авторизоваться
+        </a>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
