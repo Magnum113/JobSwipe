@@ -39,7 +39,8 @@ export const jobs = pgTable("jobs", {
 
 export const swipes = pgTable("swipes", {
   id: serial("id").primaryKey(),
-  jobId: integer("job_id").notNull().references(() => jobs.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  vacancyId: text("vacancy_id").notNull(),
   direction: text("direction").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

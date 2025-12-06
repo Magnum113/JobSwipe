@@ -1,0 +1,127 @@
+Нужно полностью реализовать функционал "запоминания свайпов", чтобы пользователю никогда повторно не показывались вакансии, которые он уже свайпнул. Даже через час, день или при перезаходе в сервис.
+
+Сделай ВСЁ НИЖЕОПИСАННОЕ.
+
+====================================================================================================
+1) ОБНОВИТЬ СТРУКТУРУ ТАБЛИЦЫ swipes (Drizzle + SQL миграция)
+====================================================================================================
+
+Текущая таблица swipes НЕ подходи, потому что:
+- нет user_id
+- job_id — это локальный ID, а теперь вакансии приходят из HH.ru
+- HH вакансии используют строковый id → нужен TEXT
+
+Нужно ПОЛНОСТЬЮ переделать таблицу:
+
+    id          SERIAL PK
+    user_id     INTEGER  (FK → users.id)
+    vacancy_id  TEXT      (id вакансии HH)
+    direction   TEXT
+    created_at  TIMESTAMP DEFAULT now()
+
+Сделай:
+
+1. Обнови /shared/schema.ts:
+
+export const swipes = pgTable("swipes", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  vacancyId: text("vacancy_id").notNull(),
+  direction: text("direction").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+Удалить старые поля job_id и связанные foreign keys.
+
+2. Создай миграцию:
+
+ALTER TABLE swipes DROP CONSTRAINT IF EXISTS swipes_job_id_jobs_id_fk;
+ALTER TABLE swipes DROP COLUMN IF EXISTS job_id;
+
+ALTER TABLE swipes ADD COLUMN user_id INTEGER NOT NULL;
+ALTER TABLE swipes ADD CONSTRAINT swipes_user_id_fk FOREIGN KEY (user_id) REFERENCES users(id);
+
+ALTER TABLE swipes ADD COLUMN vacancy_id TEXT NOT NULL;
+
+====================================================================================================
+2) ДОРАБОТАТЬ BACKEND — /api/swipes
+====================================================================================================
+
+Сейчас свайпы записываются неверно. Обнови логику:
+
+POST /api/swipes должно:
+
+- принимать { vacancyId, direction }
+- userId брать из текущей сессии / auth middleware
+- перед записью проверять, существует ли уже запись:
+
+SELECT 1 FROM swipes WHERE user_id = X AND vacancy_id = Y LIMIT 1
+
+Если есть → просто return { ok: true }
+
+Если нет → добавить запись:
+
+await db.insert(swipes).values({
+  userId: req.user.id,
+  vacancyId: req.body.vacancyId,
+  direction: req.body.direction
+});
+
+====================================================================================================
+3) ДОРАБОТАТЬ ЛОГИКУ ЗАГРУЗКИ ВАКАНСИЙ /api/hh/jobs
+====================================================================================================
+
+После запроса к HH API:
+
+1. Получить список vacancy_id, которые уже свайпнул пользователь:
+
+const swiped = await db
+  .select({ vacancyId: swipes.vacancyId })
+  .from(swipes)
+  .where(eq(swipes.userId, userId));
+
+2. Создать Set:
+
+const swipedSet = new Set(swiped.map(s => s.vacancyId));
+
+3. Перед возвратом ответа клиенту отфильтровать вакансии:
+
+const filtered = hhVacancies.filter(v => !swipedSet.has(v.id));
+
+4. Вернуть filtered.
+
+Это гарантирует:
+- при любой перезагрузке не будет повторов
+- при изменении фильтра не будет повторов
+- после каждого свайпа новыя карточка НЕ появится снова
+
+====================================================================================================
+4) ОБНОВИТЬ FRONTEND
+====================================================================================================
+
+1. При свайпе сразу убирать карточку:
+
+setCards(prev => prev.filter(c => c.id !== vacancy.id));
+
+2. При отправке свайпа:
+
+POST /api/swipes
+{
+  vacancyId: job.id,
+  direction: "left" | "right"
+}
+
+Не менять ID → это HH id.
+
+3. Никакая фронтовая фильтрация повторов НЕ нужна, это делает backend.
+
+====================================================================================================
+5) В КОНЦЕ ВЫВЕДИ:
+====================================================================================================
+
+- список всех файлов, которые ты изменил
+- итоговую структуру таблицы swipes в Drizzle
+- итоговую SQL миграцию
+- пример вызова /api/swipes
+- пример фильтрации на /api/hh/jobs
+- подтверждение, что система никогда больше не покажет свайпнутую вакансию
