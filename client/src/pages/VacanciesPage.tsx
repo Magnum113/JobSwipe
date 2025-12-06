@@ -460,7 +460,6 @@ export default function VacanciesPage() {
           <div className="absolute top-[30%] -right-[20%] w-[50%] h-[70%] rounded-full bg-gradient-to-br from-purple-100/30 to-pink-100/30 blur-3xl" />
           <div className="absolute -bottom-[20%] left-[20%] w-[40%] h-[40%] rounded-full bg-gradient-to-br from-indigo-100/20 to-blue-100/20 blur-3xl" />
         </div>
-        
         <div className="flex-1 flex items-center justify-center relative z-10 px-4">
           <div className="max-w-md w-full">
             <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl shadow-gray-900/10 p-8 text-center border border-white/50">
@@ -498,7 +497,7 @@ export default function VacanciesPage() {
                     <Briefcase className="w-5 h-5 text-purple-600" />
                   </div>
                   <div>
-                    <p className="font-medium text-gray-900">Реальные отклики</p>
+                    <p className="font-medium text-gray-900">Отклики от нейросети</p>
                     <p className="text-sm text-gray-500">Автоматическая подача на hh.ru с AI-письмом</p>
                   </div>
                 </div>
@@ -515,7 +514,7 @@ export default function VacanciesPage() {
                   data-testid="button-hh-auth"
                 >
                   <img src="/hh-logo.svg" alt="hh.ru" className="h-6" />
-                  Авторизоваться через hh.ru
+                  Авторизоваться
                 </a>
               </div>
             </div>
