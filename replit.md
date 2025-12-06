@@ -180,6 +180,13 @@ Preferred communication style: Simple, everyday language.
   - **Auto-Update**: When user syncs resumes or selects different resume, vacancies reload with new profession
   - **OAuth Redirect**: After auth, user is redirected to vacancies page (/) with personalized jobs
   
+- **2025-12-06**: Made applications fully user-scoped
+  - **Storage Method**: Added `getApplicationsByUser(userId)` for user-specific filtering
+  - **Backend Route**: GET `/api/applications` now requires `userId` parameter
+  - **Frontend Update**: HistoryPage fetches applications with userId from localStorage
+  - **Auth Prompt**: Shows login button if user is not authenticated on History page
+  - **Multi-User Support**: Each user only sees their own application history
+
 - **2025-12-06**: Added full HH.ru OAuth integration
   - OAuth login flow with token storage and refresh
   - Resume syncing from HH.ru (automatic after auth)
