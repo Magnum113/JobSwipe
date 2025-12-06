@@ -43,7 +43,7 @@ interface HHFilters {
   experience: string;
 }
 
-async function fetchHHJobs(filters: HHFilters, batch: number): Promise<HHJobsResponse> {
+async function fetchHHJobs(filters: HHFilters, batch: number, userId?: string | null): Promise<HHJobsResponse> {
   const params = new URLSearchParams();
   if (filters.text) params.append("text", filters.text);
   if (filters.area) params.append("area", filters.area);
@@ -51,12 +51,24 @@ async function fetchHHJobs(filters: HHFilters, batch: number): Promise<HHJobsRes
   if (filters.schedule && filters.schedule !== "all") params.append("schedule", filters.schedule);
   if (filters.experience && filters.experience !== "all") params.append("experience", filters.experience);
   params.append("batch", String(batch));
+  if (userId) params.append("userId", userId);
   
   const response = await fetch(`/api/hh/jobs?${params.toString()}`);
   if (!response.ok) {
     throw new Error("Failed to fetch jobs");
   }
   return response.json();
+}
+
+async function recordSwipe(userId: string, vacancyId: string, direction: "left" | "right"): Promise<void> {
+  const response = await fetch("/api/swipes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, vacancyId, direction }),
+  });
+  if (!response.ok) {
+    console.error("Failed to record swipe");
+  }
 }
 
 async function fetchResume(): Promise<Resume | { content: string }> {
@@ -199,7 +211,8 @@ export default function VacanciesPage() {
   const executeSearch = useCallback(async (searchFilters: HHFilters) => {
     setIsSearching(true);
     try {
-      const response = await fetchHHJobs(searchFilters, 1);
+      const currentUserId = localStorage.getItem("userId");
+      const response = await fetchHHJobs(searchFilters, 1, currentUserId);
       setJobs(response.jobs);
       setHasMore(response.hasMore);
       setBatch(1);
@@ -314,6 +327,13 @@ export default function VacanciesPage() {
       });
     }
 
+    // Record swipe to backend (fire and forget)
+    if (userId) {
+      recordSwipe(userId, currentJob.id, direction).catch((err) => {
+        console.error("Failed to record swipe:", err);
+      });
+    }
+
     // Immediately update UI - no blocking
     setSwipedIds(prev => {
       const next = new Set(Array.from(prev));
@@ -333,7 +353,8 @@ export default function VacanciesPage() {
     setIsLoadingMore(true);
     try {
       const nextBatch = batch + 1;
-      const response = await fetchHHJobs(appliedFilters, nextBatch);
+      const currentUserId = localStorage.getItem("userId");
+      const response = await fetchHHJobs(appliedFilters, nextBatch, currentUserId);
       
       setJobs(prev => [...prev, ...response.jobs]);
       setBatch(nextBatch);

@@ -85,7 +85,12 @@ Preferred communication style: Simple, everyday language.
   - `hh_access_token`, `hh_refresh_token`, `hh_token_expires_at` - OAuth tokens
   - `email`, `first_name`, `last_name` - Profile info from HH.ru
 - `jobs` table: Stores job vacancies (seed data)
-- `swipes` table: Records user swipe actions
+- `swipes` table: Records user swipe actions with persistent filtering
+  - `id` (serial) - Primary key
+  - `user_id` (varchar FK → users.id) - User who swiped
+  - `vacancy_id` (text) - HH.ru vacancy ID (string format)
+  - `direction` (text) - "left" or "right"
+  - `created_at` (timestamp) - When the swipe occurred
 - `resumes` table: User resumes (both synced from HH.ru and manual)
   - `user_id` - References users
   - `hh_resume_id` - HH.ru resume ID (null for manual resumes)
@@ -158,6 +163,14 @@ Preferred communication style: Simple, everyday language.
 - **Lucide React** for consistent icon system throughout the UI
 
 ## Recent Changes
+
+- **2025-12-06**: Implemented persistent swipe tracking
+  - **Schema Update**: `swipes` table now uses `user_id` (varchar FK) and `vacancy_id` (text) instead of old `job_id` integer
+  - **Backend Filtering**: `/api/hh/jobs` accepts `userId` parameter and filters out already-swiped vacancies
+  - **Swipe Recording**: POST `/api/swipes` records {userId, vacancyId, direction} with duplicate check
+  - **Storage Methods**: `getSwipedVacancyIds(userId)`, `hasSwipedVacancy(userId, vacancyId)` for efficient filtering
+  - **Frontend Integration**: Swipes are recorded to backend on every swipe (fire-and-forget for instant UI)
+  - **Guarantee**: Swiped vacancies will never appear again, even after page reload or returning later
 
 - **2025-12-06**: Added mandatory HH.ru authorization and personalized job search
   - **Auth Screen**: New users see authorization screen on Vacancies tab instead of job cards
