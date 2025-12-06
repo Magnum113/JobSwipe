@@ -825,7 +825,7 @@ export async function registerRoutes(
       console.log("[HH Resumes] Syncing resumes for user:", userId);
       const hhResumes = await getHHResumes(accessToken);
       
-      const syncedResumes = [];
+      const syncedResumes: any[] = [];
       
       for (const hhResume of hhResumes) {
         console.log("[HH Resumes] Fetching details for:", hhResume.id);
@@ -932,7 +932,156 @@ export async function registerRoutes(
   // HH.RU APPLICATION ROUTES
   // =====================================================
 
-  // Apply to vacancy through HH.ru API
+  // Async apply - returns immediately, processes in background
+  app.post("/api/apply/async", async (req, res) => {
+    try {
+      const { userId, vacancyId, vacancyData, resumeText, isDemo } = req.body;
+      
+      if (!vacancyId) {
+        return res.status(400).json({ error: "Vacancy ID required" });
+      }
+
+      const jobTitle = vacancyData?.title || "Вакансия";
+      const company = vacancyData?.company || "Компания";
+      const jobId = parseInt(vacancyId) || null;
+
+      // Create pending application immediately
+      const [pendingApp] = await db.insert(applications)
+        .values({
+          userId: userId || null,
+          vacancyId: String(vacancyId),
+          jobId,
+          jobTitle,
+          company,
+          status: "pending",
+          coverLetter: null,
+        })
+        .returning();
+
+      console.log("[Async Apply] Created pending application:", pendingApp.id);
+
+      // Return immediately
+      res.json({ 
+        status: "queued", 
+        applicationId: pendingApp.id,
+        message: "Отклик поставлен в очередь" 
+      });
+
+      // Process in background (after response sent)
+      setImmediate(async () => {
+        try {
+          console.log("[Async Apply] Starting background processing for app:", pendingApp.id);
+          
+          // Generate cover letter
+          let coverLetter = "";
+          try {
+            const vacancy = {
+              id: parseInt(vacancyId) || 0,
+              title: vacancyData?.title || "",
+              company: vacancyData?.company || "",
+              salary: vacancyData?.salary || "",
+              description: vacancyData?.description || "",
+              tags: vacancyData?.tags || [],
+            } as Job;
+            
+            coverLetter = await generateCoverLetter(resumeText || "", vacancy);
+            console.log("[Async Apply] Cover letter generated for app:", pendingApp.id);
+          } catch (err) {
+            console.error("[Async Apply] Cover letter generation failed:", err);
+            coverLetter = "Ошибка генерации сопроводительного письма.";
+          }
+
+          // If demo mode or no userId - just update with cover letter
+          if (isDemo || !userId) {
+            await db.update(applications)
+              .set({ 
+                coverLetter,
+                status: "demo",
+              })
+              .where(eq(applications.id, pendingApp.id));
+            console.log("[Async Apply] Demo application completed:", pendingApp.id);
+            return;
+          }
+
+          // For authenticated users - apply via HH.ru
+          const accessToken = await getValidAccessToken(userId);
+          if (!accessToken) {
+            await db.update(applications)
+              .set({ 
+                coverLetter,
+                status: "failed",
+                errorReason: "Не авторизован на hh.ru"
+              })
+              .where(eq(applications.id, pendingApp.id));
+            return;
+          }
+
+          // Get selected resume
+          const [selectedResume] = await db.select()
+            .from(resumes)
+            .where(and(
+              eq(resumes.userId, userId),
+              eq(resumes.selected, true)
+            ));
+
+          if (!selectedResume || !selectedResume.hhResumeId) {
+            await db.update(applications)
+              .set({ 
+                coverLetter,
+                status: "failed",
+                errorReason: "Не выбрано резюме"
+              })
+              .where(eq(applications.id, pendingApp.id));
+            return;
+          }
+
+          // Apply to HH.ru
+          const result = await applyToVacancy(
+            accessToken,
+            vacancyId,
+            selectedResume.hhResumeId,
+            coverLetter
+          );
+
+          if (result.error) {
+            await db.update(applications)
+              .set({ 
+                coverLetter,
+                resumeId: selectedResume.id,
+                status: "failed",
+                errorReason: result.error
+              })
+              .where(eq(applications.id, pendingApp.id));
+            console.log("[Async Apply] HH.ru application failed:", pendingApp.id, result.error);
+          } else {
+            await db.update(applications)
+              .set({ 
+                coverLetter,
+                resumeId: selectedResume.id,
+                status: "success",
+                hhNegotiationId: result.id || null
+              })
+              .where(eq(applications.id, pendingApp.id));
+            console.log("[Async Apply] HH.ru application succeeded:", pendingApp.id);
+          }
+        } catch (bgError) {
+          console.error("[Async Apply] Background processing error:", bgError);
+          await db.update(applications)
+            .set({ 
+              status: "failed",
+              errorReason: "Внутренняя ошибка обработки"
+            })
+            .where(eq(applications.id, pendingApp.id));
+        }
+      });
+
+    } catch (error) {
+      console.error("[Async Apply] Error:", error);
+      res.status(500).json({ error: "Failed to queue application" });
+    }
+  });
+
+  // Apply to vacancy through HH.ru API (sync - legacy)
   app.post("/api/hh/apply", async (req, res) => {
     try {
       const { userId, vacancyId, coverLetter } = req.body;

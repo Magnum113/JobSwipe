@@ -6,7 +6,7 @@ import { X, Heart, RotateCcw, Briefcase, Filter, Search, ChevronDown, Loader2, A
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import type { HHJob, HHJobsResponse, Resume } from "@shared/schema";
 
@@ -62,55 +62,27 @@ async function fetchResume(): Promise<Resume | { content: string }> {
   return response.json();
 }
 
-async function createApplication(data: {
-  jobId: number;
-  jobTitle: string;
-  company: string;
-  coverLetter: string | null;
-  status: string;
-}) {
-  const response = await fetch("/api/applications", {
+
+async function applyAsync(data: {
+  userId: string | null;
+  vacancyId: string;
+  vacancyData: {
+    title: string;
+    company: string;
+    salary: string;
+    description: string;
+    tags: string[];
+  };
+  resumeText: string;
+  isDemo: boolean;
+}): Promise<{ status: string; applicationId: number }> {
+  const response = await fetch("/api/apply/async", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
   if (!response.ok) {
-    throw new Error("Failed to create application");
-  }
-  return response.json();
-}
-
-async function generateCoverLetter(resume: string, vacancy: HHJob): Promise<string> {
-  const response = await fetch("/api/cover-letter/generate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ 
-      resume, 
-      vacancy: {
-        id: parseInt(vacancy.id) || 0,
-        title: vacancy.title,
-        company: vacancy.company,
-        salary: vacancy.salary,
-        description: vacancy.description,
-        tags: vacancy.tags,
-      }
-    }),
-  });
-  if (!response.ok) {
-    throw new Error("Failed to generate cover letter");
-  }
-  const data = await response.json();
-  return data.coverLetter;
-}
-
-async function updateApplicationCoverLetter(applicationId: number, coverLetter: string) {
-  const response = await fetch(`/api/applications/${applicationId}/cover-letter`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ coverLetter }),
-  });
-  if (!response.ok) {
-    throw new Error("Failed to update cover letter");
+    throw new Error("Failed to queue application");
   }
   return response.json();
 }
@@ -119,15 +91,6 @@ async function fetchAuthStatus(userId: string | null): Promise<AuthStatus> {
   if (!userId) return { authenticated: false };
   const response = await fetch(`/api/auth/status?userId=${userId}`);
   if (!response.ok) return { authenticated: false };
-  return response.json();
-}
-
-async function applyToHH(userId: string, vacancyId: string, coverLetter: string): Promise<HHApplyResult> {
-  const response = await fetch("/api/hh/apply", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ userId, vacancyId, coverLetter }),
-  });
   return response.json();
 }
 
@@ -250,18 +213,11 @@ export default function VacanciesPage() {
     executeSearch(filters);
   }, [executeSearch, filters]);
 
-  const applicationMutation = useMutation({
-    mutationFn: createApplication,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["applications"] });
-    },
-  });
-
   const currentJobs = jobs.slice(currentIndex).filter(job => !swipedIds.has(job.id));
 
   const lastSwipeRef = useRef<{ jobId: string; time: number } | null>(null);
 
-  const handleSwipe = useCallback(async (direction: "left" | "right") => {
+  const handleSwipe = useCallback((direction: "left" | "right") => {
     if (isSwiping) {
       console.log("SWIPE BLOCKED in parent - isSwiping=true");
       return;
@@ -288,79 +244,36 @@ export default function VacanciesPage() {
 
     if (direction === "right") {
       const isAuthenticated = authStatus?.authenticated && userId;
+      const resumeContent = resume?.content || "";
       
-      if (isAuthenticated) {
-        toast({
-          title: "Отправка отклика...",
-          description: "Генерируем сопроводительное письмо и отправляем на hh.ru",
-        });
-        
-        try {
-          const resumeContent = resume?.content || "";
-          const coverLetter = await generateCoverLetter(resumeContent, currentJob);
-          
-          const result = await applyToHH(userId, currentJob.id, coverLetter);
-          
-          if (result.success) {
-            toast({
-              title: "Отклик отправлен на hh.ru!",
-              description: `${currentJob.company} - ${currentJob.title}`,
-            });
-          } else {
-            toast({
-              title: "Ошибка отклика",
-              description: result.error || "Не удалось отправить отклик",
-              variant: "destructive",
-            });
-          }
-          
-          queryClient.invalidateQueries({ queryKey: ["applications"] });
-          queryClient.invalidateQueries({ queryKey: ["hhApplications", userId] });
-        } catch (error) {
-          toast({
-            title: "Ошибка",
-            description: "Не удалось отправить отклик",
-            variant: "destructive",
-          });
-        }
-      } else {
-        const fakeJobId = Math.abs(parseInt(currentJob.id) || Math.floor(Math.random() * 1000000));
-        
-        applicationMutation.mutate({
-          jobId: fakeJobId,
-          jobTitle: currentJob.title,
+      // Fire async request - don't wait for result
+      applyAsync({
+        userId: isAuthenticated ? userId : null,
+        vacancyId: currentJob.id,
+        vacancyData: {
+          title: currentJob.title,
           company: currentJob.company,
-          coverLetter: null,
-          status: "Демо-отклик",
-        }, {
-          onSuccess: (application) => {
-            toast({
-              title: "Демо-отклик сохранён",
-              description: "Подключите hh.ru в профиле для реальных откликов",
-            });
-            
-            const resumeContent = resume?.content || "";
-            generateCoverLetter(resumeContent, currentJob)
-              .then(async (letter) => {
-                await updateApplicationCoverLetter(application.id, letter);
-                queryClient.invalidateQueries({ queryKey: ["applications"] });
-              })
-              .catch(async () => {
-                await updateApplicationCoverLetter(application.id, "Ошибка генерации письма.");
-                queryClient.invalidateQueries({ queryKey: ["applications"] });
-              });
-          },
-          onError: () => {
-            toast({
-              title: "Ошибка",
-              description: "Не удалось создать отклик",
-              variant: "destructive",
-            });
-          }
-        });
-      }
+          salary: currentJob.salary,
+          description: currentJob.description || "",
+          tags: currentJob.tags || [],
+        },
+        resumeText: resumeContent,
+        isDemo: !isAuthenticated,
+      }).then(() => {
+        // Refresh applications list after queued
+        queryClient.invalidateQueries({ queryKey: ["applications"] });
+      }).catch((err) => {
+        console.error("Failed to queue application:", err);
+      });
+
+      // Show quick toast - no waiting
+      toast({
+        title: isAuthenticated ? "Отклик в очереди" : "Демо-отклик",
+        description: `${currentJob.company} - ${currentJob.title}`,
+      });
     }
 
+    // Immediately update UI - no blocking
     setSwipedIds(prev => {
       const next = new Set(Array.from(prev));
       next.add(currentJob.id);
@@ -371,7 +284,7 @@ export default function VacanciesPage() {
     setExpandedVacancy(null);
 
     setTimeout(() => setIsSwiping(false), 300);
-  }, [isSwiping, currentJobs, currentIndex, resume, applicationMutation, toast, queryClient, authStatus, userId]);
+  }, [isSwiping, currentJobs, currentIndex, resume, toast, queryClient, authStatus, userId]);
 
   const loadMoreJobs = useCallback(async () => {
     if (!hasMore || isLoadingMore || !appliedFilters) return;
