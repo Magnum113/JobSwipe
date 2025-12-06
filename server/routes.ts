@@ -605,14 +605,17 @@ export async function registerRoutes(
     try {
       const code = req.query.code as string;
       if (!code) {
-        return res.status(400).send("Missing authorization code");
+        console.error("[HH OAuth] Missing authorization code");
+        return res.redirect("/?hhAuth=error&reason=no_code");
       }
 
       console.log("[HH OAuth] Received code, exchanging for tokens...");
       const tokens = await exchangeCodeForTokens(code);
+      console.log("[HH OAuth] Tokens received, expires_in:", tokens.expires_in);
       
       console.log("[HH OAuth] Getting user info...");
       const userInfo = await getHHUserInfo(tokens.access_token);
+      console.log("[HH OAuth] User info:", userInfo.id, userInfo.email);
       
       const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
       
@@ -620,7 +623,7 @@ export async function registerRoutes(
       let [user] = await db.select().from(users).where(eq(users.hhUserId, userInfo.id));
       
       if (user) {
-        // Update existing user
+        console.log("[HH OAuth] Updating existing user:", user.id);
         await db.update(users)
           .set({
             hhAccessToken: tokens.access_token,
@@ -631,8 +634,11 @@ export async function registerRoutes(
             lastName: userInfo.last_name,
           })
           .where(eq(users.hhUserId, userInfo.id));
+        
+        // Refetch updated user
+        [user] = await db.select().from(users).where(eq(users.id, user.id));
       } else {
-        // Create new user
+        console.log("[HH OAuth] Creating new user for HH ID:", userInfo.id);
         const [newUser] = await db.insert(users)
           .values({
             username: userInfo.email || `hh_${userInfo.id}`,
@@ -651,7 +657,54 @@ export async function registerRoutes(
 
       console.log("[HH OAuth] User authenticated:", user.id);
       
+      // Sync resumes immediately after authentication
+      try {
+        console.log("[HH OAuth] Syncing resumes...");
+        const hhResumes = await getHHResumes(tokens.access_token);
+        console.log("[HH OAuth] Found", hhResumes.length, "resumes");
+        
+        for (const hhResume of hhResumes) {
+          const detail = await getHHResumeDetail(tokens.access_token, hhResume.id);
+          const contentText = resumeToText(detail);
+          
+          // Check if resume already exists
+          const [existing] = await db.select()
+            .from(resumes)
+            .where(and(
+              eq(resumes.userId, user.id),
+              eq(resumes.hhResumeId, hhResume.id)
+            ));
+          
+          if (existing) {
+            await db.update(resumes)
+              .set({
+                title: detail.title,
+                content: contentText,
+                contentJson: detail as any,
+                updatedAt: new Date(),
+              })
+              .where(eq(resumes.id, existing.id));
+            console.log("[HH OAuth] Updated resume:", hhResume.id);
+          } else {
+            await db.insert(resumes)
+              .values({
+                userId: user.id,
+                hhResumeId: hhResume.id,
+                title: detail.title,
+                content: contentText,
+                contentJson: detail as any,
+                selected: true,
+              });
+            console.log("[HH OAuth] Created resume:", hhResume.id);
+          }
+        }
+        console.log("[HH OAuth] Resumes synced successfully");
+      } catch (syncError) {
+        console.error("[HH OAuth] Resume sync failed (non-fatal):", syncError);
+      }
+      
       // Redirect to frontend with user ID
+      console.log("[HH OAuth] Redirecting to frontend with userId:", user.id);
       res.redirect(`/?userId=${user.id}&hhAuth=success`);
     } catch (error) {
       console.error("[HH OAuth] Callback error:", error);
@@ -686,6 +739,56 @@ export async function registerRoutes(
     } catch (error) {
       console.error("[HH Auth] Status error:", error);
       res.json({ authenticated: false });
+    }
+  });
+
+  // Get full profile with HH status and resumes
+  app.get("/api/profile", async (req, res) => {
+    try {
+      const userId = req.query.userId as string;
+      if (!userId) {
+        return res.json({ 
+          hhConnected: false, 
+          user: null, 
+          resumes: [] 
+        });
+      }
+
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
+      if (!user) {
+        return res.json({ 
+          hhConnected: false, 
+          user: null, 
+          resumes: [] 
+        });
+      }
+
+      const userResumes = await db.select()
+        .from(resumes)
+        .where(eq(resumes.userId, userId));
+      
+      const hhConnected = !!(user.hhAccessToken && user.hhUserId);
+      
+      res.json({
+        hhConnected,
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          hhUserId: user.hhUserId,
+        },
+        resumes: userResumes.map(r => ({
+          id: r.id,
+          hhResumeId: r.hhResumeId,
+          title: r.title,
+          selected: r.selected,
+          updatedAt: r.updatedAt,
+        })),
+      });
+    } catch (error) {
+      console.error("[Profile] Error:", error);
+      res.status(500).json({ error: "Failed to get profile" });
     }
   });
 

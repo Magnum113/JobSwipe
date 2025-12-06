@@ -1,151 +1,123 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { User, Save, FileText, CheckCircle, RefreshCw, LogIn, LogOut, Check } from "lucide-react";
+import { User, Save, FileText, CheckCircle, RefreshCw, LogIn, LogOut, Check, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { Resume } from "@shared/schema";
 
-interface UserInfo {
-  id: string;
-  email: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  hhUserId: string | null;
+interface ProfileData {
+  hhConnected: boolean;
+  user: {
+    id: string;
+    email: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    hhUserId: string | null;
+  } | null;
+  resumes: Array<{
+    id: number;
+    hhResumeId: string | null;
+    title: string | null;
+    selected: boolean;
+    updatedAt: string;
+  }>;
 }
 
-interface AuthStatus {
-  authenticated: boolean;
-  user?: UserInfo;
-}
-
-interface HHResume {
-  id: number;
-  userId: string;
-  hhResumeId: string;
-  title: string | null;
-  content: string;
-  selected: boolean;
-}
-
-async function fetchResume(): Promise<Resume | { content: string }> {
-  const response = await fetch("/api/resume");
-  if (!response.ok) {
-    throw new Error("Failed to fetch resume");
-  }
+async function fetchProfile(userId: string | null): Promise<ProfileData> {
+  const url = userId ? `/api/profile?userId=${userId}` : "/api/profile";
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("Failed to fetch profile");
   return response.json();
 }
 
-async function saveResume(content: string): Promise<Resume> {
+async function fetchManualResume(): Promise<{ content: string }> {
+  const response = await fetch("/api/resume");
+  if (!response.ok) return { content: "" };
+  return response.json();
+}
+
+async function saveManualResume(content: string): Promise<void> {
   const response = await fetch("/api/resume", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content }),
   });
-  if (!response.ok) {
-    throw new Error("Failed to save resume");
-  }
-  return response.json();
+  if (!response.ok) throw new Error("Failed to save resume");
 }
 
-async function fetchAuthStatus(userId: string | null): Promise<AuthStatus> {
-  if (!userId) return { authenticated: false };
-  const response = await fetch(`/api/auth/status?userId=${userId}`);
-  if (!response.ok) return { authenticated: false };
-  return response.json();
-}
-
-async function fetchHHResumes(userId: string): Promise<HHResume[]> {
-  const response = await fetch(`/api/hh/resumes?userId=${userId}`);
-  if (!response.ok) throw new Error("Failed to fetch resumes");
-  return response.json();
-}
-
-async function syncResumes(userId: string): Promise<{ resumes: HHResume[], count: number }> {
-  const response = await fetch("/api/hh/resumes/sync", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ userId }),
-  });
-  if (!response.ok) throw new Error("Failed to sync resumes");
-  return response.json();
-}
-
-async function selectResume(userId: string, resumeId: number): Promise<HHResume> {
+async function selectResume(userId: string, resumeId: number): Promise<void> {
   const response = await fetch("/api/hh/resumes/select", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ userId, resumeId }),
   });
   if (!response.ok) throw new Error("Failed to select resume");
-  return response.json();
+}
+
+async function syncResumes(userId: string): Promise<void> {
+  const response = await fetch("/api/hh/resumes/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId }),
+  });
+  if (!response.ok) throw new Error("Failed to sync resumes");
 }
 
 export default function Profile() {
   const queryClient = useQueryClient();
   const [resumeText, setResumeText] = useState("");
   const [saved, setSaved] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(() => localStorage.getItem("userId"));
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlUserId = params.get("userId");
-    const storedUserId = localStorage.getItem("userId");
     
     if (urlUserId) {
       localStorage.setItem("userId", urlUserId);
       setUserId(urlUserId);
       window.history.replaceState({}, "", window.location.pathname);
-    } else if (storedUserId) {
-      setUserId(storedUserId);
     }
   }, []);
 
-  const { data: authStatus, isLoading: authLoading } = useQuery({
-    queryKey: ["authStatus", userId],
-    queryFn: () => fetchAuthStatus(userId),
-    enabled: !!userId,
+  const { data: profile, isLoading: profileLoading, refetch: refetchProfile } = useQuery({
+    queryKey: ["profile", userId],
+    queryFn: () => fetchProfile(userId),
   });
 
-  const { data: hhResumes, isLoading: resumesLoading, refetch: refetchResumes } = useQuery({
-    queryKey: ["hhResumes", userId],
-    queryFn: () => fetchHHResumes(userId!),
-    enabled: !!userId && !!authStatus?.authenticated,
-  });
-
-  const { data: resume, isLoading } = useQuery({
-    queryKey: ["resume"],
-    queryFn: fetchResume,
+  const { data: manualResume } = useQuery({
+    queryKey: ["manualResume"],
+    queryFn: fetchManualResume,
   });
 
   const saveMutation = useMutation({
-    mutationFn: saveResume,
+    mutationFn: saveManualResume,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["resume"] });
+      queryClient.invalidateQueries({ queryKey: ["manualResume"] });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-    },
-  });
-
-  const syncMutation = useMutation({
-    mutationFn: () => syncResumes(userId!),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["hhResumes", userId] });
     },
   });
 
   const selectMutation = useMutation({
     mutationFn: (resumeId: number) => selectResume(userId!, resumeId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["hhResumes", userId] });
+      queryClient.invalidateQueries({ queryKey: ["profile", userId] });
+    },
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: () => syncResumes(userId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["profile", userId] });
     },
   });
 
   useEffect(() => {
-    if (resume?.content) {
-      setResumeText(resume.content);
+    if (manualResume?.content) {
+      setResumeText(manualResume.content);
     }
-  }, [resume]);
+  }, [manualResume]);
 
   const handleSave = () => {
     saveMutation.mutate(resumeText);
@@ -158,19 +130,22 @@ export default function Profile() {
   const handleLogout = () => {
     localStorage.removeItem("userId");
     setUserId(null);
-    queryClient.invalidateQueries({ queryKey: ["authStatus"] });
-    queryClient.invalidateQueries({ queryKey: ["hhResumes"] });
-  };
-
-  const handleSync = () => {
-    syncMutation.mutate();
+    queryClient.invalidateQueries({ queryKey: ["profile"] });
   };
 
   const handleSelectResume = (resumeId: number) => {
-    selectMutation.mutate(resumeId);
+    if (userId) {
+      selectMutation.mutate(resumeId);
+    }
   };
 
-  if (isLoading) {
+  const handleSync = () => {
+    if (userId) {
+      syncMutation.mutate();
+    }
+  };
+
+  if (profileLoading) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
@@ -178,8 +153,9 @@ export default function Profile() {
     );
   }
 
-  const isAuthenticated = authStatus?.authenticated;
-  const user = authStatus?.user;
+  const hhConnected = profile?.hhConnected ?? false;
+  const user = profile?.user;
+  const hhResumes = profile?.resumes ?? [];
 
   return (
     <div className="p-6 pb-24 max-w-lg mx-auto">
@@ -189,7 +165,7 @@ export default function Profile() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Профиль</h1>
-          <p className="text-gray-500 text-sm">Управление вашим резюме</p>
+          <p className="text-gray-500 text-sm">Управление аккаунтом и резюме</p>
         </div>
       </div>
 
@@ -205,7 +181,7 @@ export default function Profile() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {isAuthenticated && user ? (
+          {hhConnected && user ? (
             <div className="space-y-4">
               <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl">
                 <CheckCircle className="w-5 h-5 text-green-600" />
@@ -230,21 +206,18 @@ export default function Profile() {
                 <Button
                   onClick={handleSync}
                   disabled={syncMutation.isPending}
-                  className="flex-1 rounded-full bg-indigo-600 hover:bg-indigo-700"
+                  variant="outline"
+                  className="flex-1 rounded-full"
                   data-testid="button-sync-resumes"
                 >
                   <RefreshCw className={`w-4 h-4 mr-2 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
-                  {syncMutation.isPending ? "Синхронизация..." : "Синхронизировать резюме"}
+                  {syncMutation.isPending ? "Синхронизация..." : "Обновить резюме"}
                 </Button>
               </div>
 
-              {resumesLoading ? (
-                <div className="flex justify-center py-4">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
-                </div>
-              ) : hhResumes && hhResumes.length > 0 ? (
+              {hhResumes.length > 0 ? (
                 <div className="space-y-2">
-                  <p className="text-sm font-medium text-gray-700">Ваши резюме:</p>
+                  <p className="text-sm font-medium text-gray-700">Ваши резюме с hh.ru:</p>
                   {hhResumes.map((r) => (
                     <div
                       key={r.id}
@@ -262,17 +235,41 @@ export default function Profile() {
                           {r.title || "Без названия"}
                         </span>
                       </div>
+                      {r.hhResumeId && (
+                        <a 
+                          href={`https://hh.ru/resume/${r.hhResumeId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-indigo-500 flex items-center gap-1 mt-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Открыть на hh.ru <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
                     </div>
                   ))}
                 </div>
               ) : (
                 <p className="text-sm text-gray-500 text-center py-4">
-                  Нажмите "Синхронизировать резюме" для загрузки ваших резюме с hh.ru
+                  Резюме не найдены. Нажмите "Обновить резюме" для загрузки.
                 </p>
               )}
+
+              <div className="p-3 bg-green-50 rounded-xl">
+                <p className="text-sm text-green-700">
+                  Ваш аккаунт hh.ru подключен. Теперь при свайпе вправо отклики будут отправляться напрямую на hh.ru!
+                </p>
+              </div>
             </div>
           ) : (
-            <div className="text-center py-4">
+            <div className="text-center py-6">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <img 
+                  src="https://hh.ru/favicon.ico" 
+                  alt="HH.ru" 
+                  className="w-8 h-8 opacity-50" 
+                />
+              </div>
               <p className="text-gray-600 mb-4">
                 Подключите аккаунт hh.ru для отправки реальных откликов на вакансии
               </p>
@@ -298,7 +295,10 @@ export default function Profile() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-gray-500">
-            Используется для генерации сопроводительных писем, если не подключен hh.ru
+            {hhConnected 
+              ? "Используется как дополнение к резюме с hh.ru для генерации писем"
+              : "Используется для генерации сопроводительных писем в демо-режиме"
+            }
           </p>
           <Textarea
             placeholder="Введите информацию о себе, опыте работы, навыках..."
@@ -334,11 +334,13 @@ export default function Profile() {
         </CardContent>
       </Card>
 
-      <div className="mt-6 p-4 bg-indigo-50 rounded-2xl">
-        <p className="text-sm text-indigo-700">
-          <strong>Подсказка:</strong> Подключите hh.ru для отправки реальных откликов. Ваше резюме с hh.ru будет использоваться для генерации сопроводительных писем.
-        </p>
-      </div>
+      {!hhConnected && (
+        <div className="mt-6 p-4 bg-amber-50 rounded-2xl">
+          <p className="text-sm text-amber-700">
+            <strong>Демо-режим:</strong> Сейчас отклики сохраняются только локально. Подключите hh.ru для отправки реальных откликов.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
