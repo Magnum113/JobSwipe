@@ -102,6 +102,8 @@ export default function Profile() {
     mutationFn: (resumeId: number) => selectResume(userId!, resumeId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["profile", userId] });
+      // Invalidate profession so vacancies can be updated
+      queryClient.invalidateQueries({ queryKey: ["profession", userId] });
     },
   });
 
@@ -109,6 +111,8 @@ export default function Profile() {
     mutationFn: () => syncResumes(userId!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["profile", userId] });
+      // Invalidate profession so vacancies can be updated with new resume data
+      queryClient.invalidateQueries({ queryKey: ["profession", userId] });
     },
   });
 

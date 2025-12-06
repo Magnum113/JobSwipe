@@ -2,13 +2,18 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { VacancyCard, VacancyCardRef } from "@/components/VacancyCard";
 import { VacancyFullView } from "@/components/VacancyFullView";
 import { AnimatePresence } from "framer-motion";
-import { X, Heart, RotateCcw, Briefcase, Filter, Search, ChevronDown, Loader2, AlertCircle } from "lucide-react";
+import { X, Heart, RotateCcw, Briefcase, Filter, Search, ChevronDown, Loader2, AlertCircle, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import type { HHJob, HHJobsResponse, Resume } from "@shared/schema";
+
+interface ProfessionResponse {
+  profession: string | null;
+  resumeTitle?: string;
+}
 
 interface AuthStatus {
   authenticated: boolean;
@@ -94,6 +99,13 @@ async function fetchAuthStatus(userId: string | null): Promise<AuthStatus> {
   return response.json();
 }
 
+async function fetchProfession(userId: string | null): Promise<ProfessionResponse> {
+  if (!userId) return { profession: null };
+  const response = await fetch(`/api/user/profession?userId=${userId}`);
+  if (!response.ok) return { profession: null };
+  return response.json();
+}
+
 const AREAS = [
   { value: "1", label: "Москва" },
   { value: "2", label: "Санкт-Петербург" },
@@ -154,14 +166,21 @@ export default function VacanciesPage() {
     }
   }, []);
   
-  const { data: authStatus } = useQuery({
+  const { data: authStatus, isLoading: isAuthLoading } = useQuery({
     queryKey: ["authStatus", userId],
     queryFn: () => fetchAuthStatus(userId),
     enabled: !!userId,
   });
+
+  // Fetch profession for personalized job search
+  const { data: professionData } = useQuery({
+    queryKey: ["profession", userId],
+    queryFn: () => fetchProfession(userId),
+    enabled: !!userId && authStatus?.authenticated,
+  });
   
   const [filters, setFilters] = useState<HHFilters>({
-    text: "маркетинг",
+    text: "",
     area: "1",
     employment: "all",
     schedule: "all",
@@ -195,19 +214,41 @@ export default function VacanciesPage() {
     }
   }, []);
 
+  // Track the last used profession to detect changes
+  const lastProfessionRef = useRef<string | null>(null);
+
+  // Load personalized vacancies based on profession after auth
   useEffect(() => {
-    if (!initialLoadDone) {
+    if (!initialLoadDone && authStatus?.authenticated && professionData?.profession) {
       const initialFilters: HHFilters = {
-        text: "маркетинг",
+        text: professionData.profession,
         area: "1",
         employment: "all",
         schedule: "all",
         experience: "all",
       };
+      setFilters(initialFilters);
       executeSearch(initialFilters);
       setInitialLoadDone(true);
+      lastProfessionRef.current = professionData.profession;
     }
-  }, [initialLoadDone, executeSearch]);
+  }, [initialLoadDone, authStatus?.authenticated, professionData?.profession, executeSearch]);
+
+  // Reload vacancies when profession changes (e.g., after resume sync or resume selection)
+  useEffect(() => {
+    if (initialLoadDone && professionData?.profession && lastProfessionRef.current !== professionData.profession) {
+      const newFilters: HHFilters = {
+        text: professionData.profession,
+        area: filters.area,
+        employment: filters.employment,
+        schedule: filters.schedule,
+        experience: filters.experience,
+      };
+      setFilters(newFilters);
+      executeSearch(newFilters);
+      lastProfessionRef.current = professionData.profession;
+    }
+  }, [initialLoadDone, professionData?.profession, filters.area, filters.employment, filters.schedule, filters.experience, executeSearch]);
 
   const handleSearch = useCallback(() => {
     executeSearch(filters);
@@ -373,6 +414,95 @@ export default function VacanciesPage() {
 
   const showLoadMore = currentJobs.length === 0 && hasMore && jobs.length > 0;
   const showNoMoreJobs = currentJobs.length === 0 && !hasMore && jobs.length > 0;
+
+  // Check if user needs to authenticate
+  const requiresAuth = !userId || (!isAuthLoading && !authStatus?.authenticated);
+
+  // Loading state while checking auth
+  if (userId && isAuthLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-500">Проверяем авторизацию...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Auth screen for new/unauthenticated users
+  if (requiresAuth) {
+    return (
+      <div className="flex flex-col h-full relative overflow-hidden">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-[30%] -left-[20%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-blue-100/40 to-indigo-100/40 blur-3xl" />
+          <div className="absolute top-[30%] -right-[20%] w-[50%] h-[70%] rounded-full bg-gradient-to-br from-purple-100/30 to-pink-100/30 blur-3xl" />
+          <div className="absolute -bottom-[20%] left-[20%] w-[40%] h-[40%] rounded-full bg-gradient-to-br from-indigo-100/20 to-blue-100/20 blur-3xl" />
+        </div>
+        
+        <div className="flex-1 flex items-center justify-center relative z-10 px-4">
+          <div className="max-w-md w-full">
+            <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl shadow-gray-900/10 p-8 text-center border border-white/50">
+              <div className="mb-6">
+                <div className="p-4 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-lg shadow-indigo-500/30 w-fit mx-auto mb-4">
+                  <Briefcase className="w-10 h-10 text-white" />
+                </div>
+                <h1 className="text-2xl font-bold text-gray-900 mb-2">JobSwiper</h1>
+                <p className="text-gray-500">Умный поиск работы в стиле Tinder</p>
+              </div>
+              
+              <div className="space-y-4 mb-8">
+                <div className="flex items-center gap-3 text-left p-3 bg-gray-50 rounded-xl">
+                  <div className="p-2 bg-green-100 rounded-lg">
+                    <Heart className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">Свайпай вакансии</p>
+                    <p className="text-sm text-gray-500">Влево — пропустить, вправо — откликнуться</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-3 text-left p-3 bg-gray-50 rounded-xl">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <Search className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">Персональный подбор</p>
+                    <p className="text-sm text-gray-500">Вакансии по вашей специальности из резюме</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-3 text-left p-3 bg-gray-50 rounded-xl">
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <Briefcase className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">Реальные отклики</p>
+                    <p className="text-sm text-gray-500">Автоматическая подача на hh.ru с AI-письмом</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                <p className="text-sm text-gray-600 mb-4">
+                  Чтобы начать пользоваться сервисом, авторизуйтесь через hh.ru
+                </p>
+                
+                <a
+                  href="/auth/hh/start"
+                  className="flex items-center justify-center gap-3 w-full py-4 px-6 bg-[#D6001C] hover:bg-[#B8001A] text-white font-semibold rounded-xl shadow-lg shadow-red-500/25 transition-all hover:shadow-xl hover:shadow-red-500/30"
+                  data-testid="button-hh-auth"
+                >
+                  <img src="/hh-logo.svg" alt="hh.ru" className="h-6" />
+                  Авторизоваться через hh.ru
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isSearching && jobs.length === 0) {
     return (

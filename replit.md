@@ -159,10 +159,18 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+- **2025-12-06**: Added mandatory HH.ru authorization and personalized job search
+  - **Auth Screen**: New users see authorization screen on Vacancies tab instead of job cards
+  - **Personalized Jobs**: Vacancies are loaded based on user's profession from resume
+  - **Profession Extraction**: `extractProfession()` function extracts specialty from resume title/experience
+  - **GET /api/user/profession**: Endpoint returns user's profession from selected resume
+  - **Auto-Update**: When user syncs resumes or selects different resume, vacancies reload with new profession
+  - **OAuth Redirect**: After auth, user is redirected to vacancies page (/) with personalized jobs
+  
 - **2025-12-06**: Added full HH.ru OAuth integration
   - OAuth login flow with token storage and refresh
-  - Resume syncing from HH.ru
+  - Resume syncing from HH.ru (automatic after auth)
   - Real job applications via HH.ru API
   - Profile page with HH.ru connection status
   - VacanciesPage shows "hh.ru" indicator when authenticated
-  - Demo mode fallback for unauthenticated users
+  - Async application processing (non-blocking UI)

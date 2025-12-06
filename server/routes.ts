@@ -20,6 +20,30 @@ import {
 
 const BATCH_SIZE = 30;
 
+// Extract profession from resume title or experience
+function extractProfession(title: string | null, contentJson: any): string {
+  // First try the resume title
+  if (title) {
+    return title;
+  }
+  
+  // Try to get from experience (last position)
+  if (contentJson?.experience && Array.isArray(contentJson.experience) && contentJson.experience.length > 0) {
+    const lastJob = contentJson.experience[0];
+    if (lastJob.position) {
+      return lastJob.position;
+    }
+  }
+  
+  // Try specialization
+  if (contentJson?.specialization && Array.isArray(contentJson.specialization) && contentJson.specialization.length > 0) {
+    return contentJson.specialization[0].name || contentJson.specialization[0];
+  }
+  
+  // Fallback
+  return "Специалист";
+}
+
 interface HHVacancy {
   id: string;
   name: string;
@@ -710,9 +734,9 @@ export async function registerRoutes(
         console.error("[HH OAuth] Resume sync failed (non-fatal):", syncError);
       }
       
-      // Redirect to profile page with user ID
-      console.log("[HH OAuth] Redirecting to /profile with userId:", user.id);
-      res.redirect(`/profile?userId=${user.id}&hhAuth=success`);
+      // Redirect to vacancies page with user ID (main page after auth)
+      console.log("[HH OAuth] Redirecting to / with userId:", user.id);
+      res.redirect(`/?userId=${user.id}&hhAuth=success`);
     } catch (error) {
       console.error("[HH OAuth] Callback error:", error);
       res.redirect("/?hhAuth=error");
@@ -746,6 +770,45 @@ export async function registerRoutes(
     } catch (error) {
       console.error("[HH Auth] Status error:", error);
       res.json({ authenticated: false });
+    }
+  });
+
+  // Get user's profession from selected resume
+  app.get("/api/user/profession", async (req, res) => {
+    try {
+      const userId = req.query.userId as string;
+      if (!userId) {
+        return res.json({ profession: null });
+      }
+
+      // Get selected resume
+      const [selectedResume] = await db.select()
+        .from(resumes)
+        .where(and(
+          eq(resumes.userId, userId),
+          eq(resumes.selected, true)
+        ));
+
+      if (!selectedResume) {
+        // Try to get any resume
+        const [anyResume] = await db.select()
+          .from(resumes)
+          .where(eq(resumes.userId, userId));
+        
+        if (!anyResume) {
+          return res.json({ profession: null });
+        }
+        
+        // Extract profession from title or content
+        const profession = extractProfession(anyResume.title, anyResume.contentJson);
+        return res.json({ profession, resumeTitle: anyResume.title });
+      }
+
+      const profession = extractProfession(selectedResume.title, selectedResume.contentJson);
+      res.json({ profession, resumeTitle: selectedResume.title });
+    } catch (error) {
+      console.error("[Profession] Error:", error);
+      res.json({ profession: null });
     }
   });
 
