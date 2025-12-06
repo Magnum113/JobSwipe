@@ -1,6 +1,7 @@
 import type { Job } from "@shared/schema";
 
-const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+const GEMINI_API_URL =
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 function extractGeminiText(data: any): string | null {
   return (
@@ -11,9 +12,12 @@ function extractGeminiText(data: any): string | null {
   );
 }
 
-export async function generateCoverLetter(resume: string, vacancy: Job): Promise<string> {
+export async function generateCoverLetter(
+  resume: string,
+  vacancy: Job
+): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
-  
+
   if (!apiKey) {
     console.error("GEMINI_API_KEY not found");
     return getFallbackLetter(resume, vacancy);
@@ -37,14 +41,14 @@ ${resume || "Опытный специалист с сильным аналит�
    - зоны экспертизы
    - сильные стороны, связанные с вакансией
 3) Блок "3 ключевых кейса":
-   - каждый кейс в формате: действие → метрика → результат
+   - каждый кейс: действие → метрика → результат
    - обязательно цифры: какие-либо метрики, проценты, цифры, которые есть в резюме и которые будут релевантны для вакансии
 
 Стиль:
 - уверенный и экспертный
 - никакой воды
 - только конкретика и метрики
-- письмо вывести полностью, без комментариев и без повторения резюме
+- письмо вывести полностью, без пояснений
 `;
 
   try {
@@ -54,16 +58,19 @@ ${resume || "Опытный специалист с сильным аналит�
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
+        model: "models/gemini-2.0-flash",
         contents: [
           {
-            parts: [{ text: prompt }]
-          }
+            role: "user",
+            parts: [{ text: prompt }],
+          },
         ],
         generationConfig: {
           temperature: 0.8,
-          maxOutputTokens: 1000,
-        }
-      })
+          maxOutputTokens: 800,
+          responseMimeType: "text/plain", // 🔥 ОБЯЗАТЕЛЬНО
+        },
+      }),
     });
 
     if (!response.ok) {
@@ -73,9 +80,9 @@ ${resume || "Опытный специалист с сильным аналит�
     }
 
     const data = await response.json();
-    
+
     console.log("GEMINI RAW:", JSON.stringify(data, null, 2));
-    
+
     const content = extractGeminiText(data);
 
     if (!content) {
