@@ -12,6 +12,14 @@ declare module "http" {
   }
 }
 
+// Early request logging for debugging
+app.use((req, _res, next) => {
+  if (req.path.startsWith("/auth")) {
+    console.log(`[DEBUG] Incoming request: ${req.method} ${req.path}${req.url.includes('?') ? '?' + req.url.split('?')[1] : ''}`);
+  }
+  next();
+});
+
 app.use(
   express.json({
     verify: (req, _res, buf) => {
