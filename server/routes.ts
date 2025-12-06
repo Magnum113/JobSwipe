@@ -341,6 +341,7 @@ export async function registerRoutes(
 
   // HH.ru API - Get jobs with batch pagination
   // Each batch = one HH API page with per_page=30
+  // Filters out already-swiped vacancies for authenticated users
   app.get("/api/hh/jobs", async (req, res) => {
     try {
       const text = (req.query.text as string) || "маркетинг";
@@ -349,6 +350,7 @@ export async function registerRoutes(
       const schedule = req.query.schedule as string | undefined;
       const experience = req.query.experience as string | undefined;
       const batch = parseInt(req.query.batch as string) || 1;
+      const userId = req.query.userId as string | undefined;
       
       const page = batch - 1;
       
@@ -384,7 +386,17 @@ export async function registerRoutes(
       const totalFound = data.found as number;
       const pages = data.pages as number;
       
-      const jobs = items.map(adaptHHVacancy);
+      let jobs = items.map(adaptHHVacancy);
+      
+      // Filter out already-swiped vacancies for authenticated users
+      if (userId) {
+        const swipedIds = await storage.getSwipedVacancyIds(userId);
+        const swipedSet = new Set(swipedIds);
+        const beforeFilter = jobs.length;
+        jobs = jobs.filter(job => !swipedSet.has(job.id));
+        console.log(`[HH API] Filtered swiped vacancies: ${beforeFilter} -> ${jobs.length} (removed ${beforeFilter - jobs.length})`);
+      }
+      
       const hasMore = batch < pages;
       
       console.log(`[HH API] Batch ${batch}: got ${jobs.length} jobs, total found: ${totalFound}, pages: ${pages}, hasMore: ${hasMore}`);
@@ -474,19 +486,41 @@ export async function registerRoutes(
   // Record a swipe
   app.post("/api/swipes", async (req, res) => {
     try {
-      const validatedSwipe = insertSwipeSchema.parse(req.body);
-      const swipe = await storage.createSwipe(validatedSwipe);
-      res.status(201).json(swipe);
+      const { vacancyId, direction, userId } = req.body;
+      
+      if (!userId) {
+        return res.status(400).json({ error: "User ID is required" });
+      }
+      if (!vacancyId) {
+        return res.status(400).json({ error: "Vacancy ID is required" });
+      }
+      if (!direction || !["left", "right"].includes(direction)) {
+        return res.status(400).json({ error: "Direction must be 'left' or 'right'" });
+      }
+      
+      // Check if already swiped
+      const alreadySwiped = await storage.hasSwipedVacancy(userId, vacancyId);
+      if (alreadySwiped) {
+        return res.json({ ok: true, alreadySwiped: true });
+      }
+      
+      // Create swipe
+      const swipe = await storage.createSwipe(userId, vacancyId, direction);
+      res.status(201).json({ ok: true, swipe });
     } catch (error) {
       console.error("Error recording swipe:", error);
-      res.status(400).json({ error: "Invalid swipe data" });
+      res.status(400).json({ error: "Failed to record swipe" });
     }
   });
 
   // Get swipe history
   app.get("/api/swipes", async (req, res) => {
     try {
-      const swipes = await storage.getSwipeHistory();
+      const userId = req.query.userId as string | undefined;
+      if (!userId) {
+        return res.status(400).json({ error: "User ID is required" });
+      }
+      const swipes = await storage.getSwipeHistory(userId);
       res.json(swipes);
     } catch (error) {
       console.error("Error fetching swipe history:", error);
@@ -497,7 +531,11 @@ export async function registerRoutes(
   // Reset swipes
   app.post("/api/swipes/reset", async (req, res) => {
     try {
-      await storage.deleteAllSwipes();
+      const userId = req.body.userId as string | undefined;
+      if (!userId) {
+        return res.status(400).json({ error: "User ID is required" });
+      }
+      await storage.deleteAllSwipes(userId);
       res.json({ message: "Swipes reset successfully" });
     } catch (error) {
       console.error("Error resetting swipes:", error);

@@ -29,9 +29,11 @@ export interface IStorage {
   createJob(job: InsertJob): Promise<Job>;
   seedJobs(jobList: InsertJob[]): Promise<void>;
   
-  createSwipe(swipe: InsertSwipe): Promise<Swipe>;
-  getSwipeHistory(): Promise<Swipe[]>;
-  deleteAllSwipes(): Promise<void>;
+  createSwipe(userId: string, vacancyId: string, direction: string): Promise<Swipe>;
+  getSwipedVacancyIds(userId: string): Promise<string[]>;
+  hasSwipedVacancy(userId: string, vacancyId: string): Promise<boolean>;
+  getSwipeHistory(userId: string): Promise<Swipe[]>;
+  deleteAllSwipes(userId: string): Promise<void>;
   
   getManualResume(userId: string): Promise<Resume | undefined>;
   saveManualResume(userId: string, content: string): Promise<Resume>;
@@ -62,14 +64,7 @@ export class DbStorage implements IStorage {
   }
 
   async getUnswipedJobs(filters?: JobFilters): Promise<Job[]> {
-    const swipedJobIds = await db.select({ jobId: swipes.jobId }).from(swipes);
-    const swipedIds = swipedJobIds.map((s: { jobId: number }) => s.jobId);
-    
     const conditions = [];
-    
-    if (swipedIds.length > 0) {
-      conditions.push(notInArray(jobs.id, swipedIds));
-    }
     
     if (filters) {
       if (filters.company && filters.company !== 'all') {
@@ -197,17 +192,42 @@ export class DbStorage implements IStorage {
     }
   }
 
-  async createSwipe(swipe: InsertSwipe): Promise<Swipe> {
-    const [created] = await db.insert(swipes).values(swipe).returning();
+  async createSwipe(userId: string, vacancyId: string, direction: string): Promise<Swipe> {
+    const [created] = await db.insert(swipes).values({
+      userId,
+      vacancyId,
+      direction,
+    }).returning();
     return created;
   }
 
-  async getSwipeHistory(): Promise<Swipe[]> {
-    return await db.select().from(swipes).orderBy(desc(swipes.createdAt));
+  async getSwipedVacancyIds(userId: string): Promise<string[]> {
+    const swiped = await db.select({ vacancyId: swipes.vacancyId })
+      .from(swipes)
+      .where(eq(swipes.userId, userId));
+    return swiped.map(s => s.vacancyId);
   }
 
-  async deleteAllSwipes(): Promise<void> {
-    await db.delete(swipes);
+  async hasSwipedVacancy(userId: string, vacancyId: string): Promise<boolean> {
+    const [existing] = await db.select({ id: swipes.id })
+      .from(swipes)
+      .where(and(
+        eq(swipes.userId, userId),
+        eq(swipes.vacancyId, vacancyId)
+      ))
+      .limit(1);
+    return !!existing;
+  }
+
+  async getSwipeHistory(userId: string): Promise<Swipe[]> {
+    return await db.select()
+      .from(swipes)
+      .where(eq(swipes.userId, userId))
+      .orderBy(desc(swipes.createdAt));
+  }
+
+  async deleteAllSwipes(userId: string): Promise<void> {
+    await db.delete(swipes).where(eq(swipes.userId, userId));
   }
 
   async getManualResume(userId: string): Promise<Resume | undefined> {
