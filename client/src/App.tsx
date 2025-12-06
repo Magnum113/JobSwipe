@@ -15,17 +15,29 @@ function AppContent() {
     const params = new URLSearchParams(window.location.search);
     const userId = params.get("userId");
     const hhAuth = params.get("hhAuth");
+    const pathname = window.location.pathname;
     
     if (userId) {
       localStorage.setItem("userId", userId);
     }
     
+    // Handle URL path for tab switching
+    if (pathname === "/profile") {
+      setActiveTab("profile");
+    } else if (pathname === "/history") {
+      setActiveTab("history");
+    }
+    
+    // Handle OAuth callback
     if (hhAuth === "success") {
       setActiveTab("profile");
-      window.history.replaceState({}, "", window.location.pathname);
+      window.history.replaceState({}, "", "/");
     } else if (hhAuth === "error") {
       console.error("HH.ru OAuth failed");
-      window.history.replaceState({}, "", window.location.pathname);
+      window.history.replaceState({}, "", "/");
+    } else if (pathname !== "/") {
+      // Clean up URL after reading pathname
+      window.history.replaceState({}, "", "/");
     }
   }, []);
 

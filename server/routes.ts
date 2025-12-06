@@ -703,9 +703,9 @@ export async function registerRoutes(
         console.error("[HH OAuth] Resume sync failed (non-fatal):", syncError);
       }
       
-      // Redirect to frontend with user ID
-      console.log("[HH OAuth] Redirecting to frontend with userId:", user.id);
-      res.redirect(`/?userId=${user.id}&hhAuth=success`);
+      // Redirect to profile page with user ID
+      console.log("[HH OAuth] Redirecting to /profile with userId:", user.id);
+      res.redirect(`/profile?userId=${user.id}&hhAuth=success`);
     } catch (error) {
       console.error("[HH OAuth] Callback error:", error);
       res.redirect("/?hhAuth=error");
