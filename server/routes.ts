@@ -910,7 +910,7 @@ export async function registerRoutes(
       res.json({ success: true, application: app });
     } catch (error) {
       console.error("[HH Apply] Error:", error);
-      res.status(500).json({ error: "Failed to apply" });
+      res.status(500).json({ success: false, error: "Failed to apply" });
     }
   });
 

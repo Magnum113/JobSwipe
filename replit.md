@@ -2,7 +2,7 @@
 
 ## Overview
 
-JobSwipe is a modern job search application that brings the familiar swipe-based interface to job hunting. Users can swipe through job vacancies, manage their resume, search for specific positions, and view their application history. The platform integrates AI-powered cover letter generation to streamline the job application process.
+JobSwipe is a modern job search application that brings the familiar swipe-based interface to job hunting. Users can swipe through job vacancies, manage their resume, search for specific positions, and view their application history. The platform integrates with HH.ru for real job applications and uses AI-powered cover letter generation.
 
 ## User Preferences
 
@@ -26,14 +26,13 @@ Preferred communication style: Simple, everyday language.
 **State Management**
 - **TanStack Query (React Query)** for server state management, data fetching, and caching
 - Local React state for UI interactions and tab navigation
-- Custom query client configuration with infinite stale time to minimize refetching
+- UserId stored in localStorage for persistent authentication
 
 **Application Structure**
-- **Tab-based navigation** with four main sections:
+- **Tab-based navigation** with three main sections:
   - Vacancies (main Tinder-style swipe interface)
-  - Search (filtered job search)
   - History (application history with cover letters)
-  - Profile (resume management)
+  - Profile (HH.ru OAuth login, resume sync, manual resume)
 - Component organization follows feature-based structure in `/client/src/pages`
 - Reusable UI components in `/client/src/components/ui`
 
@@ -46,20 +45,29 @@ Preferred communication style: Simple, everyday language.
 
 **API Design**
 - RESTful endpoints for jobs, swipes, resumes, and applications
-- `/api/hh/jobs` - **HH.ru Integration** - Fetches real vacancies from HeadHunter API with batch pagination (30 jobs per batch)
-  - Query params: `text`, `area`, `employment`, `schedule`, `experience`, `batch`
-  - Returns: `{ jobs: HHJob[], hasMore: boolean, total: number, batch: number }`
+
+**HH.ru Integration Endpoints:**
+- `/api/hh/jobs` - Fetches real vacancies from HeadHunter API with batch pagination
+- `/auth/hh/start` - Initiates OAuth flow, redirects to HH.ru
+- `/auth/hh/callback` - OAuth callback, exchanges code for tokens, creates/updates user
+- `/api/auth/status` - Returns authentication status and user info
+- `/api/hh/resumes/sync` - Syncs user's resumes from HH.ru
+- `/api/hh/resumes` - Gets user's synced resumes
+- `/api/hh/resumes/select` - Selects active resume for applications
+- `/api/hh/apply` - Submits real job application via HH.ru API
+- `/api/hh/applications` - Gets user's HH.ru applications
+
+**Local Endpoints:**
 - `/api/jobs/unswiped` - Fetches local jobs not yet swiped (fallback/seed data)
-- `/api/jobs/search` - Search with filters (company, salary, title, keywords)
-- `/api/swipes` - Records left/right swipe decisions
-- `/api/resume` - GET/POST endpoints for resume management
-- `/api/applications` - Application history tracking
-- `/api/cover-letter/generate` - AI-powered cover letter generation
+- `/api/resume` - GET/POST endpoints for manual resume management
+- `/api/applications` - Local application history tracking
+- `/api/cover-letter/generate` - AI-powered cover letter generation using Google Gemini
 
 **Server Organization**
 - `/server/routes.ts` - Centralized route registration
+- `/server/hhAuth.ts` - HH.ru OAuth module (token exchange, refresh, resume API, apply API)
 - `/server/storage.ts` - Database abstraction layer (IStorage interface)
-- `/server/openrouter.ts` - OpenRouter API integration for AI features
+- `/server/gemini.ts` - Google Gemini API integration for AI cover letters
 - `/server/static.ts` - Static file serving for production builds
 
 ### Data Layer
@@ -70,56 +78,91 @@ Preferred communication style: Simple, everyday language.
 - Schema location: `/shared/schema.ts` (shared between client and server)
 
 **Schema Design**
-- `jobs` table: Stores job vacancies with title, company, salary, description, and tags array
-- `swipes` table: Records user swipe actions with job reference and direction
-- `resumes` table: Stores user resume content with timestamps
-- `applications` table: Tracks job applications with cover letters and status
-- `users` table: User authentication (username/password)
+- `users` table: User accounts with HH.ru OAuth tokens
+  - `id` (varchar UUID) - Primary key
+  - `username`, `password` - Local auth
+  - `hh_user_id` - HH.ru user ID
+  - `hh_access_token`, `hh_refresh_token`, `hh_token_expires_at` - OAuth tokens
+  - `email`, `first_name`, `last_name` - Profile info from HH.ru
+- `jobs` table: Stores job vacancies (seed data)
+- `swipes` table: Records user swipe actions
+- `resumes` table: User resumes (both synced from HH.ru and manual)
+  - `user_id` - References users
+  - `hh_resume_id` - HH.ru resume ID (null for manual resumes)
+  - `title`, `content`, `content_json` - Resume content
+  - `selected` - Active resume for applications
+- `applications` table: Tracks job applications
+  - `user_id` - References users
+  - `vacancy_id` - HH.ru vacancy ID
+  - `hh_negotiation_id` - HH.ru negotiation ID (for real applications)
+  - `status` - success/failed/demo
+  - `error_reason` - Error message if application failed
 
-**Data Access Pattern**
-- Repository pattern via `DbStorage` class implementing `IStorage` interface
-- All database operations abstracted behind methods for easier testing and maintenance
-- Drizzle's query builder for type-safe SQL generation
+### HH.ru OAuth Integration
+
+**OAuth Flow:**
+1. User clicks "Войти через hh.ru" on Profile page
+2. Redirect to `/auth/hh/start` -> HH.ru authorization page
+3. User authorizes, HH.ru redirects to `/auth/hh/callback?code=...`
+4. Server exchanges code for access/refresh tokens
+5. Fetches user info from HH.ru API
+6. Creates/updates user record with tokens
+7. Redirects to `/?userId=...&hhAuth=success`
+8. Frontend stores userId in localStorage
+
+**Token Refresh:**
+- `getValidAccessToken()` in hhAuth.ts checks token expiry
+- Automatically refreshes token if expired using refresh_token
+- Updates tokens in database
+
+**Resume Sync:**
+- Fetches all resumes from HH.ru `/resumes/mine`
+- For each resume, fetches full details
+- Converts to text format for AI cover letter generation
+- Stores in local database with HH.ru resume ID
+
+**Real Applications:**
+- When user swipes right (if authenticated):
+  1. Generate cover letter using AI
+  2. POST to HH.ru `/negotiations` API
+  3. Store application record locally with hh_negotiation_id
+  4. Show success/error toast
 
 ### External Dependencies
 
 **AI Integration**
-- **OpenRouter API** for cover letter generation
-  - Model: `openai/gpt-4.1-mini`
-  - API key stored in Replit Secrets as `OPENROUTER_API_KEY`
+- **Google Gemini API** for cover letter generation
+  - Model: `gemini-1.5-flash`
+  - API key stored in Replit Secrets as `GEMINI_API_KEY`
   - Generates contextual cover letters based on resume and job description
-  - Fallback mechanism when API is unavailable
 
-**Replit Platform Integration**
-- **@replit/vite-plugin-runtime-error-modal** - Development error overlay
-- **@replit/vite-plugin-cartographer** - Development tooling
-- **@replit/vite-plugin-dev-banner** - Development environment banner
-- Environment variable access via `process.env.REPLIT_DEV_DOMAIN`
+**HH.ru API**
+- OAuth 2.0 for authentication
+- Client credentials stored as `HH_CLIENT_ID` and `HH_CLIENT_SECRET`
+- Used for: vacancy search, resume sync, job applications
 
-**Database Infrastructure**
-- **PostgreSQL connection** via `pg` (node-postgres)
-- Connection string from `DATABASE_URL` environment variable
-- Connection pooling for efficient database access
-
-**Session Management**
-- **connect-pg-simple** - PostgreSQL-backed session store (imported but not fully configured)
-- Session storage infrastructure ready for authentication implementation
+**Required Environment Variables:**
+- `DATABASE_URL` - PostgreSQL connection string
+- `GEMINI_API_KEY` - Google Gemini API key
+- `HH_CLIENT_ID` - HH.ru OAuth Client ID
+- `HH_CLIENT_SECRET` - HH.ru OAuth Client Secret
+- `SESSION_SECRET` - Session encryption key
 
 **Development & Build**
 - **TSX** for TypeScript execution in development
-- **esbuild** for fast server-side bundling with selective dependency bundling
-- **Drizzle Kit** for database migrations and schema management
-- Build script bundles allowlisted dependencies to reduce cold start times
+- **esbuild** for fast server-side bundling
+- **Drizzle Kit** for database schema management
 
 **Font & Icon Libraries**
 - **Google Fonts** (Plus Jakarta Sans) loaded via CDN
 - **Lucide React** for consistent icon system throughout the UI
 
-**Form Management**
-- **React Hook Form** with **@hookform/resolvers** for form validation
-- **Zod** for schema validation with Drizzle integration via `drizzle-zod`
+## Recent Changes
 
-**Utility Libraries**
-- **clsx** and **tailwind-merge** for conditional className composition
-- **date-fns** for date formatting and manipulation
-- **nanoid** for unique ID generation
+- **2025-12-06**: Added full HH.ru OAuth integration
+  - OAuth login flow with token storage and refresh
+  - Resume syncing from HH.ru
+  - Real job applications via HH.ru API
+  - Profile page with HH.ru connection status
+  - VacanciesPage shows "hh.ru" indicator when authenticated
+  - Demo mode fallback for unauthenticated users

@@ -2,13 +2,33 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { VacancyCard, VacancyCardRef } from "@/components/VacancyCard";
 import { VacancyFullView } from "@/components/VacancyFullView";
 import { AnimatePresence } from "framer-motion";
-import { X, Heart, RotateCcw, Briefcase, Filter, Search, ChevronDown, Loader2 } from "lucide-react";
+import { X, Heart, RotateCcw, Briefcase, Filter, Search, ChevronDown, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import type { HHJob, HHJobsResponse, Resume } from "@shared/schema";
+
+interface AuthStatus {
+  authenticated: boolean;
+  user?: {
+    id: string;
+    email: string | null;
+    firstName: string | null;
+    lastName: string | null;
+  };
+}
+
+interface HHApplyResult {
+  success: boolean;
+  error?: string;
+  application?: {
+    id: number;
+    status: string;
+    errorReason?: string;
+  };
+}
 
 interface HHFilters {
   text: string;
@@ -95,6 +115,22 @@ async function updateApplicationCoverLetter(applicationId: number, coverLetter: 
   return response.json();
 }
 
+async function fetchAuthStatus(userId: string | null): Promise<AuthStatus> {
+  if (!userId) return { authenticated: false };
+  const response = await fetch(`/api/auth/status?userId=${userId}`);
+  if (!response.ok) return { authenticated: false };
+  return response.json();
+}
+
+async function applyToHH(userId: string, vacancyId: string, coverLetter: string): Promise<HHApplyResult> {
+  const response = await fetch("/api/hh/apply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, vacancyId, coverLetter }),
+  });
+  return response.json();
+}
+
 const AREAS = [
   { value: "1", label: "Москва" },
   { value: "2", label: "Санкт-Петербург" },
@@ -143,6 +179,23 @@ export default function VacanciesPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   
   const cardRef = useRef<VacancyCardRef>(null);
+  
+  const [userId, setUserId] = useState<string | null>(() => localStorage.getItem("userId"));
+  
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlUserId = params.get("userId");
+    if (urlUserId) {
+      localStorage.setItem("userId", urlUserId);
+      setUserId(urlUserId);
+    }
+  }, []);
+  
+  const { data: authStatus } = useQuery({
+    queryKey: ["authStatus", userId],
+    queryFn: () => fetchAuthStatus(userId),
+    enabled: !!userId,
+  });
   
   const [filters, setFilters] = useState<HHFilters>({
     text: "маркетинг",
@@ -208,7 +261,7 @@ export default function VacanciesPage() {
 
   const lastSwipeRef = useRef<{ jobId: string; time: number } | null>(null);
 
-  const handleSwipe = useCallback((direction: "left" | "right") => {
+  const handleSwipe = useCallback(async (direction: "left" | "right") => {
     if (isSwiping) {
       console.log("SWIPE BLOCKED in parent - isSwiping=true");
       return;
@@ -234,40 +287,78 @@ export default function VacanciesPage() {
     console.log("SWIPE HANDLED", direction, currentJob.id);
 
     if (direction === "right") {
-      const fakeJobId = Math.abs(parseInt(currentJob.id) || Math.floor(Math.random() * 1000000));
+      const isAuthenticated = authStatus?.authenticated && userId;
       
-      applicationMutation.mutate({
-        jobId: fakeJobId,
-        jobTitle: currentJob.title,
-        company: currentJob.company,
-        coverLetter: null,
-        status: "Отклик отправлен",
-      }, {
-        onSuccess: (application) => {
-          toast({
-            title: "Отклик отправлен!",
-            description: `Сопроводительное письмо генерируется...`,
-          });
-          
+      if (isAuthenticated) {
+        toast({
+          title: "Отправка отклика...",
+          description: "Генерируем сопроводительное письмо и отправляем на hh.ru",
+        });
+        
+        try {
           const resumeContent = resume?.content || "";
-          generateCoverLetter(resumeContent, currentJob)
-            .then(async (letter) => {
-              await updateApplicationCoverLetter(application.id, letter);
-              queryClient.invalidateQueries({ queryKey: ["applications"] });
-            })
-            .catch(async () => {
-              await updateApplicationCoverLetter(application.id, "Ошибка генерации письма. Попробуйте обновить страницу.");
-              queryClient.invalidateQueries({ queryKey: ["applications"] });
+          const coverLetter = await generateCoverLetter(resumeContent, currentJob);
+          
+          const result = await applyToHH(userId, currentJob.id, coverLetter);
+          
+          if (result.success) {
+            toast({
+              title: "Отклик отправлен на hh.ru!",
+              description: `${currentJob.company} - ${currentJob.title}`,
             });
-        },
-        onError: () => {
+          } else {
+            toast({
+              title: "Ошибка отклика",
+              description: result.error || "Не удалось отправить отклик",
+              variant: "destructive",
+            });
+          }
+          
+          queryClient.invalidateQueries({ queryKey: ["applications"] });
+          queryClient.invalidateQueries({ queryKey: ["hhApplications", userId] });
+        } catch (error) {
           toast({
             title: "Ошибка",
-            description: "Не удалось создать отклик",
+            description: "Не удалось отправить отклик",
             variant: "destructive",
           });
         }
-      });
+      } else {
+        const fakeJobId = Math.abs(parseInt(currentJob.id) || Math.floor(Math.random() * 1000000));
+        
+        applicationMutation.mutate({
+          jobId: fakeJobId,
+          jobTitle: currentJob.title,
+          company: currentJob.company,
+          coverLetter: null,
+          status: "Демо-отклик",
+        }, {
+          onSuccess: (application) => {
+            toast({
+              title: "Демо-отклик сохранён",
+              description: "Подключите hh.ru в профиле для реальных откликов",
+            });
+            
+            const resumeContent = resume?.content || "";
+            generateCoverLetter(resumeContent, currentJob)
+              .then(async (letter) => {
+                await updateApplicationCoverLetter(application.id, letter);
+                queryClient.invalidateQueries({ queryKey: ["applications"] });
+              })
+              .catch(async () => {
+                await updateApplicationCoverLetter(application.id, "Ошибка генерации письма.");
+                queryClient.invalidateQueries({ queryKey: ["applications"] });
+              });
+          },
+          onError: () => {
+            toast({
+              title: "Ошибка",
+              description: "Не удалось создать отклик",
+              variant: "destructive",
+            });
+          }
+        });
+      }
     }
 
     setSwipedIds(prev => {
@@ -280,7 +371,7 @@ export default function VacanciesPage() {
     setExpandedVacancy(null);
 
     setTimeout(() => setIsSwiping(false), 300);
-  }, [isSwiping, currentJobs, currentIndex, resume, applicationMutation, toast, queryClient]);
+  }, [isSwiping, currentJobs, currentIndex, resume, applicationMutation, toast, queryClient, authStatus, userId]);
 
   const loadMoreJobs = useCallback(async () => {
     if (!hasMore || isLoadingMore || !appliedFilters) return;
@@ -396,7 +487,17 @@ export default function VacanciesPage() {
             </div>
             <div>
               <h1 className="font-bold text-gray-900">JobSwiper</h1>
-              <p className="text-xs text-gray-500">{jobs.length} вакансий загружено</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-gray-500">{jobs.length} вакансий</p>
+                {authStatus?.authenticated ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full">
+                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                    hh.ru
+                  </span>
+                ) : (
+                  <span className="text-xs text-gray-400">демо</span>
+                )}
+              </div>
             </div>
           </div>
           <Button
