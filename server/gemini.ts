@@ -1,8 +1,11 @@
 import type { Job } from "@shared/schema";
 
 const GEMINI_API_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent";
 
+// -------------------------------
+// 1. Нормальный парсер ответа Gemini
+// -------------------------------
 function extractGeminiText(data: any): string | null {
   return (
     data?.candidates?.[0]?.content?.parts?.[0]?.text ||
@@ -12,6 +15,26 @@ function extractGeminiText(data: any): string | null {
   );
 }
 
+// -------------------------------
+// 2. Сжатие резюме, чтобы Gemini не терял важное
+// -------------------------------
+function compressResume(raw: string): string {
+  if (!raw) return "";
+
+  // Сжимаем до 3000 символов, чтобы не резались ключевые цифры и достижения
+  if (raw.length <= 3000) return raw;
+
+  // Умное сжатие: оставляем первые 2000 + последние 800 символов
+  return (
+    raw.slice(0, 2000) +
+    "\n...\n" +
+    raw.slice(-800)
+  );
+}
+
+// -------------------------------
+// 3. Генерация сопроводительного письма
+// -------------------------------
 export async function generateCoverLetter(
   resume: string,
   vacancy: Job
@@ -19,10 +42,13 @@ export async function generateCoverLetter(
   const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
-    console.error("GEMINI_API_KEY not found");
-    return getFallbackLetter(resume, vacancy);
+    console.error("GEMINI_API_KEY missing");
+    return getFallbackLetter(vacancy);
   }
 
+  const compressedResume = compressResume(resume);
+
+  // ---------- PROMPT ----------
   const prompt = `
 Ты должен создать сопроводительное письмо строго на основе данных из резюме.
 
@@ -35,7 +61,7 @@ export async function generateCoverLetter(
 
 Единственный источник правды (SOURCE OF TRUTH):
 === РЕЗЮМЕ НАЧАЛО ===
-${resume}
+${compressedResume}
 === РЕЗЮМЕ КОНЕЦ ===
 
 Данные вакансии:
@@ -63,35 +89,28 @@ ${resume}
 - никакой воды
 - только конкретика и метрики
 - письмо вывести полностью, без пояснений
-`;
+`.trim();
 
   try {
     const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
+
       body: JSON.stringify({
-        model: "models/gemini-2.0-flash",
+        model: "models/gemini-2.5-pro",
         contents: [
           {
             role: "user",
-            parts: [{ text: prompt }],
-          },
+            parts: [{ text: prompt }]
+          }
         ],
         generationConfig: {
-          temperature: 0.8,
+          temperature: 0.4,          // низкая галлюцинация
           maxOutputTokens: 800,
-          responseMimeType: "text/plain", // 🔥 ОБЯЗАТЕЛЬНО
-        },
-      }),
+          responseMimeType: "text/plain"
+        }
+      })
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Gemini API error:", response.status, errorText);
-      return getFallbackLetter(resume, vacancy);
-    }
 
     const data = await response.json();
 
@@ -99,28 +118,35 @@ ${resume}
 
     const content = extractGeminiText(data);
 
-    if (!content) {
-      console.error("No content in Gemini response");
-      return getFallbackLetter(resume, vacancy);
+    if (!content || typeof content !== "string") {
+      console.error("Gemini returned empty content");
+      return getFallbackLetter(vacancy);
     }
 
-    return content.trim();
-  } catch (error) {
-    console.error("Error calling Gemini API:", error);
-    return getFallbackLetter(resume, vacancy);
+    return sanitizeText(content.trim());
+  } catch (err) {
+    console.error("Gemini generation error:", err);
+    return getFallbackLetter(vacancy);
   }
 }
 
-function getFallbackLetter(resume: string, vacancy: Job): string {
-  return `
-Product marketing manager с релевантным опытом. Работал с growth-задачами, аналитикой, A/B тестами, развитием продуктовых фич и улучшением конверсий.
-
-3 ключевых кейса:
-1) Улучшил продуктовую воронку — +17% к конверсии за счёт переработки UX и тестирования гипотез.
-2) Запустил фичу, которая дала +28% к вовлечённости пользователей и рост Retention Day 7.
-3) Оптимизировал процесс запуска акций и лендингов — сокращение времени разработки в 4 раза.
-
-Интересует позиция ${vacancy.title} в ${vacancy.company}.
-Готов показать результаты и обсудить, как могу усилить команду.
-  `.trim();
+// -------------------------------
+// 4. Plain-text sanitizer (убирает звёздочки, маркеры и markdown)
+// -------------------------------
+function sanitizeText(text: string): string {
+  return text
+    .replace(/[*#_\-]/g, " ") // убираем markdown символы
+    .replace(/\s+/g, " ")     // нормализуем пробелы
+    .trim();
 }
+
+// -------------------------------
+// 5. Fallback (без фантазий)
+// -------------------------------
+function getFallbackLetter(vacancy: Job): string {
+  return `
+Имею релевантный опыт работы и развивал продуктовые и маркетинговые направления. Работал с аналитикой, гипотезами, улучшением процессов и ростом метрик.
+
+Готов обсудить, как мой опыт может быть полезен для вас.
+  `.trim();
+  }
