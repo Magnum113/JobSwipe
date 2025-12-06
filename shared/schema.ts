@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -7,11 +7,19 @@ export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
+  hhUserId: text("hh_user_id").unique(),
+  hhAccessToken: text("hh_access_token"),
+  hhRefreshToken: text("hh_refresh_token"),
+  hhTokenExpiresAt: timestamp("hh_token_expires_at"),
+  email: text("email"),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -38,17 +46,27 @@ export const swipes = pgTable("swipes", {
 
 export const resumes = pgTable("resumes", {
   id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id),
+  hhResumeId: text("hh_resume_id"),
+  title: text("title"),
   content: text("content").notNull(),
+  contentJson: jsonb("content_json"),
+  selected: boolean("selected").default(false).notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const applications = pgTable("applications", {
   id: serial("id").primaryKey(),
-  jobId: integer("job_id").notNull().references(() => jobs.id),
+  userId: varchar("user_id").references(() => users.id),
+  vacancyId: text("vacancy_id"),
+  jobId: integer("job_id"),
   jobTitle: text("job_title").notNull(),
   company: text("company").notNull(),
+  resumeId: integer("resume_id").references(() => resumes.id),
   coverLetter: text("cover_letter"),
-  status: text("status").notNull().default("Отклик отправлен"),
+  hhNegotiationId: text("hh_negotiation_id"),
+  status: text("status").notNull().default("pending"),
+  errorReason: text("error_reason"),
   appliedAt: timestamp("applied_at").defaultNow().notNull(),
 });
 
@@ -99,4 +117,20 @@ export interface HHJobsResponse {
   hasMore: boolean;
   total: number;
   batch: number;
+}
+
+export interface HHResume {
+  id: string;
+  title: string;
+  url: string;
+  created_at: string;
+  updated_at: string;
+  alternate_url: string;
+}
+
+export interface HHUserInfo {
+  id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
 }

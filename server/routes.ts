@@ -1,9 +1,22 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db";
+import { users, resumes, applications } from "@shared/schema";
 import { insertJobSchema, insertSwipeSchema, insertApplicationSchema, type Job, type HHJob, type HHJobsResponse } from "@shared/schema";
 import { z } from "zod";
+import { eq, and } from "drizzle-orm";
 import { generateCoverLetter } from "./gemini";
+import {
+  getAuthUrl,
+  exchangeCodeForTokens,
+  getHHUserInfo,
+  getValidAccessToken,
+  getHHResumes,
+  getHHResumeDetail,
+  applyToVacancy,
+  resumeToText,
+} from "./hhAuth";
 
 const BATCH_SIZE = 30;
 
@@ -568,6 +581,355 @@ export async function registerRoutes(
       }
       console.error("Error generating cover letter:", error);
       res.status(500).json({ error: "Failed to generate cover letter" });
+    }
+  });
+
+  // =====================================================
+  // HH.RU OAUTH ROUTES
+  // =====================================================
+
+  // Start OAuth flow - redirect to HH.ru
+  app.get("/auth/hh/start", (req, res) => {
+    try {
+      const authUrl = getAuthUrl();
+      console.log("[HH OAuth] Redirecting to:", authUrl);
+      res.redirect(authUrl);
+    } catch (error) {
+      console.error("[HH OAuth] Error starting auth:", error);
+      res.status(500).json({ error: "Failed to start OAuth" });
+    }
+  });
+
+  // OAuth callback - exchange code for tokens
+  app.get("/auth/hh/callback", async (req, res) => {
+    try {
+      const code = req.query.code as string;
+      if (!code) {
+        return res.status(400).send("Missing authorization code");
+      }
+
+      console.log("[HH OAuth] Received code, exchanging for tokens...");
+      const tokens = await exchangeCodeForTokens(code);
+      
+      console.log("[HH OAuth] Getting user info...");
+      const userInfo = await getHHUserInfo(tokens.access_token);
+      
+      const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
+      
+      // Find or create user
+      let [user] = await db.select().from(users).where(eq(users.hhUserId, userInfo.id));
+      
+      if (user) {
+        // Update existing user
+        await db.update(users)
+          .set({
+            hhAccessToken: tokens.access_token,
+            hhRefreshToken: tokens.refresh_token,
+            hhTokenExpiresAt: expiresAt,
+            email: userInfo.email,
+            firstName: userInfo.first_name,
+            lastName: userInfo.last_name,
+          })
+          .where(eq(users.hhUserId, userInfo.id));
+      } else {
+        // Create new user
+        const [newUser] = await db.insert(users)
+          .values({
+            username: userInfo.email || `hh_${userInfo.id}`,
+            password: "oauth_user",
+            hhUserId: userInfo.id,
+            hhAccessToken: tokens.access_token,
+            hhRefreshToken: tokens.refresh_token,
+            hhTokenExpiresAt: expiresAt,
+            email: userInfo.email,
+            firstName: userInfo.first_name,
+            lastName: userInfo.last_name,
+          })
+          .returning();
+        user = newUser;
+      }
+
+      console.log("[HH OAuth] User authenticated:", user.id);
+      
+      // Redirect to frontend with user ID
+      res.redirect(`/?userId=${user.id}&hhAuth=success`);
+    } catch (error) {
+      console.error("[HH OAuth] Callback error:", error);
+      res.redirect("/?hhAuth=error");
+    }
+  });
+
+  // Get current auth status
+  app.get("/api/auth/status", async (req, res) => {
+    try {
+      const userId = req.query.userId as string;
+      if (!userId) {
+        return res.json({ authenticated: false });
+      }
+
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
+      if (!user || !user.hhAccessToken) {
+        return res.json({ authenticated: false });
+      }
+
+      const accessToken = await getValidAccessToken(userId);
+      res.json({
+        authenticated: !!accessToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          hhUserId: user.hhUserId,
+        },
+      });
+    } catch (error) {
+      console.error("[HH Auth] Status error:", error);
+      res.json({ authenticated: false });
+    }
+  });
+
+  // =====================================================
+  // HH.RU RESUME ROUTES
+  // =====================================================
+
+  // Sync resumes from HH.ru
+  app.post("/api/hh/resumes/sync", async (req, res) => {
+    try {
+      const userId = req.body.userId as string;
+      if (!userId) {
+        return res.status(400).json({ error: "User ID required" });
+      }
+
+      const accessToken = await getValidAccessToken(userId);
+      if (!accessToken) {
+        return res.status(401).json({ error: "Not authenticated with HH.ru" });
+      }
+
+      console.log("[HH Resumes] Syncing resumes for user:", userId);
+      const hhResumes = await getHHResumes(accessToken);
+      
+      const syncedResumes = [];
+      
+      for (const hhResume of hhResumes) {
+        console.log("[HH Resumes] Fetching details for:", hhResume.id);
+        const detail = await getHHResumeDetail(accessToken, hhResume.id);
+        const contentText = resumeToText(detail);
+        
+        // Check if resume already exists
+        const [existing] = await db.select()
+          .from(resumes)
+          .where(and(
+            eq(resumes.userId, userId),
+            eq(resumes.hhResumeId, hhResume.id)
+          ));
+        
+        if (existing) {
+          // Update existing resume
+          const [updated] = await db.update(resumes)
+            .set({
+              title: detail.title,
+              content: contentText,
+              contentJson: detail as any,
+              updatedAt: new Date(),
+            })
+            .where(eq(resumes.id, existing.id))
+            .returning();
+          syncedResumes.push(updated);
+        } else {
+          // Create new resume
+          const [created] = await db.insert(resumes)
+            .values({
+              userId,
+              hhResumeId: hhResume.id,
+              title: detail.title,
+              content: contentText,
+              contentJson: detail as any,
+              selected: syncedResumes.length === 0, // Select first resume by default
+            })
+            .returning();
+          syncedResumes.push(created);
+        }
+      }
+
+      console.log("[HH Resumes] Synced", syncedResumes.length, "resumes");
+      res.json({ resumes: syncedResumes, count: syncedResumes.length });
+    } catch (error) {
+      console.error("[HH Resumes] Sync error:", error);
+      res.status(500).json({ error: "Failed to sync resumes" });
+    }
+  });
+
+  // Get user's resumes
+  app.get("/api/hh/resumes", async (req, res) => {
+    try {
+      const userId = req.query.userId as string;
+      if (!userId) {
+        return res.status(400).json({ error: "User ID required" });
+      }
+
+      const userResumes = await db.select()
+        .from(resumes)
+        .where(eq(resumes.userId, userId));
+      
+      res.json(userResumes);
+    } catch (error) {
+      console.error("[HH Resumes] Get error:", error);
+      res.status(500).json({ error: "Failed to get resumes" });
+    }
+  });
+
+  // Select active resume
+  app.post("/api/hh/resumes/select", async (req, res) => {
+    try {
+      const { userId, resumeId } = req.body;
+      if (!userId || !resumeId) {
+        return res.status(400).json({ error: "User ID and Resume ID required" });
+      }
+
+      // Deselect all resumes for this user
+      await db.update(resumes)
+        .set({ selected: false })
+        .where(eq(resumes.userId, userId));
+      
+      // Select the specified resume
+      const [updated] = await db.update(resumes)
+        .set({ selected: true })
+        .where(and(
+          eq(resumes.id, parseInt(resumeId)),
+          eq(resumes.userId, userId)
+        ))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: "Resume not found" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("[HH Resumes] Select error:", error);
+      res.status(500).json({ error: "Failed to select resume" });
+    }
+  });
+
+  // =====================================================
+  // HH.RU APPLICATION ROUTES
+  // =====================================================
+
+  // Apply to vacancy through HH.ru API
+  app.post("/api/hh/apply", async (req, res) => {
+    try {
+      const { userId, vacancyId, coverLetter } = req.body;
+      
+      if (!userId || !vacancyId) {
+        return res.status(400).json({ error: "User ID and Vacancy ID required" });
+      }
+
+      const accessToken = await getValidAccessToken(userId);
+      if (!accessToken) {
+        return res.status(401).json({ error: "Not authenticated with HH.ru" });
+      }
+
+      // Get selected resume
+      const [selectedResume] = await db.select()
+        .from(resumes)
+        .where(and(
+          eq(resumes.userId, userId),
+          eq(resumes.selected, true)
+        ));
+
+      if (!selectedResume || !selectedResume.hhResumeId) {
+        return res.status(400).json({ error: "No resume selected" });
+      }
+
+      console.log("[HH Apply] Applying to vacancy:", vacancyId, "with resume:", selectedResume.hhResumeId);
+      
+      const result = await applyToVacancy(
+        accessToken,
+        vacancyId,
+        selectedResume.hhResumeId,
+        coverLetter || ""
+      );
+
+      // Get vacancy details for logging
+      let jobTitle = "Вакансия";
+      let company = "Компания";
+      try {
+        const vacancyRes = await fetch(`https://api.hh.ru/vacancies/${vacancyId}`, {
+          headers: { "User-Agent": "JobSwipe/1.0" }
+        });
+        if (vacancyRes.ok) {
+          const vacancy = await vacancyRes.json();
+          jobTitle = vacancy.name;
+          company = vacancy.employer?.name || "Компания";
+        }
+      } catch {}
+
+      if (result.error) {
+        // Check for test assignment error
+        const isTestRequired = result.error.includes("тест") || 
+          result.errors?.some(e => e.type === "negotiations" && e.value.includes("test"));
+        
+        const [app] = await db.insert(applications)
+          .values({
+            userId,
+            vacancyId,
+            jobTitle,
+            company,
+            resumeId: selectedResume.id,
+            coverLetter,
+            status: "failed",
+            errorReason: isTestRequired 
+              ? "Вакансия требует тестового задания. Отклик возможен только на hh.ru."
+              : result.error,
+          })
+          .returning();
+        
+        return res.status(400).json({ 
+          success: false, 
+          error: app.errorReason,
+          application: app,
+        });
+      }
+
+      // Success
+      const [app] = await db.insert(applications)
+        .values({
+          userId,
+          vacancyId,
+          jobTitle,
+          company,
+          resumeId: selectedResume.id,
+          coverLetter,
+          hhNegotiationId: result.id,
+          status: "success",
+        })
+        .returning();
+
+      console.log("[HH Apply] Application created:", app.id);
+      res.json({ success: true, application: app });
+    } catch (error) {
+      console.error("[HH Apply] Error:", error);
+      res.status(500).json({ error: "Failed to apply" });
+    }
+  });
+
+  // Get user's applications
+  app.get("/api/hh/applications", async (req, res) => {
+    try {
+      const userId = req.query.userId as string;
+      if (!userId) {
+        return res.status(400).json({ error: "User ID required" });
+      }
+
+      const userApplications = await db.select()
+        .from(applications)
+        .where(eq(applications.userId, userId));
+      
+      res.json(userApplications);
+    } catch (error) {
+      console.error("[HH Applications] Get error:", error);
+      res.status(500).json({ error: "Failed to get applications" });
     }
   });
 
