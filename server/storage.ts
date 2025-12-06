@@ -33,8 +33,8 @@ export interface IStorage {
   getSwipeHistory(): Promise<Swipe[]>;
   deleteAllSwipes(): Promise<void>;
   
-  getManualResume(userId: string | null): Promise<Resume | undefined>;
-  saveManualResume(userId: string | null, content: string): Promise<Resume>;
+  getManualResume(userId: string): Promise<Resume | undefined>;
+  saveManualResume(userId: string, content: string): Promise<Resume>;
   
   createApplication(application: InsertApplication): Promise<Application>;
   getAllApplications(): Promise<Application[]>;
@@ -210,10 +210,7 @@ export class DbStorage implements IStorage {
     await db.delete(swipes);
   }
 
-  async getManualResume(userId: string | null): Promise<Resume | undefined> {
-    if (!userId) {
-      return undefined;
-    }
+  async getManualResume(userId: string): Promise<Resume | undefined> {
     const [resume] = await db.select()
       .from(resumes)
       .where(and(
@@ -225,11 +222,7 @@ export class DbStorage implements IStorage {
     return resume;
   }
 
-  async saveManualResume(userId: string | null, content: string): Promise<Resume> {
-    if (!userId) {
-      throw new Error("User ID is required to save manual resume");
-    }
-    
+  async saveManualResume(userId: string, content: string): Promise<Resume> {
     const existing = await this.getManualResume(userId);
     
     if (existing) {

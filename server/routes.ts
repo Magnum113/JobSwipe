@@ -486,10 +486,10 @@ export async function registerRoutes(
     try {
       const userId = req.query.userId as string | undefined;
       if (!userId) {
-        return res.json({ content: "" });
+        return res.status(400).json({ error: "User ID is required" });
       }
       const resume = await storage.getManualResume(userId);
-      res.json(resume || { content: "" });
+      res.json({ content: resume?.content || "" });
     } catch (error) {
       console.error("Error fetching resume:", error);
       res.status(500).json({ error: "Failed to fetch resume" });
