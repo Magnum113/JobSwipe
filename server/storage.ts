@@ -33,8 +33,8 @@ export interface IStorage {
   getSwipeHistory(): Promise<Swipe[]>;
   deleteAllSwipes(): Promise<void>;
   
-  getResume(): Promise<Resume | undefined>;
-  saveResume(content: string): Promise<Resume>;
+  getManualResume(userId: string | null): Promise<Resume | undefined>;
+  saveManualResume(userId: string | null, content: string): Promise<Resume>;
   
   createApplication(application: InsertApplication): Promise<Application>;
   getAllApplications(): Promise<Application[]>;
@@ -210,13 +210,27 @@ export class DbStorage implements IStorage {
     await db.delete(swipes);
   }
 
-  async getResume(): Promise<Resume | undefined> {
-    const [resume] = await db.select().from(resumes).orderBy(desc(resumes.updatedAt)).limit(1);
+  async getManualResume(userId: string | null): Promise<Resume | undefined> {
+    if (!userId) {
+      return undefined;
+    }
+    const [resume] = await db.select()
+      .from(resumes)
+      .where(and(
+        eq(resumes.userId, userId),
+        sql`${resumes.hhResumeId} IS NULL`
+      ))
+      .orderBy(desc(resumes.updatedAt))
+      .limit(1);
     return resume;
   }
 
-  async saveResume(content: string): Promise<Resume> {
-    const existing = await this.getResume();
+  async saveManualResume(userId: string | null, content: string): Promise<Resume> {
+    if (!userId) {
+      throw new Error("User ID is required to save manual resume");
+    }
+    
+    const existing = await this.getManualResume(userId);
     
     if (existing) {
       const [updated] = await db
@@ -227,7 +241,12 @@ export class DbStorage implements IStorage {
       return updated;
     }
     
-    const [created] = await db.insert(resumes).values({ content }).returning();
+    const [created] = await db.insert(resumes).values({ 
+      userId,
+      content,
+      hhResumeId: null,
+      selected: false,
+    }).returning();
     return created;
   }
 

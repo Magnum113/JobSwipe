@@ -481,10 +481,14 @@ export async function registerRoutes(
     }
   });
 
-  // Get resume
+  // Get manual resume (user-scoped)
   app.get("/api/resume", async (req, res) => {
     try {
-      const resume = await storage.getResume();
+      const userId = req.query.userId as string | undefined;
+      if (!userId) {
+        return res.json({ content: "" });
+      }
+      const resume = await storage.getManualResume(userId);
       res.json(resume || { content: "" });
     } catch (error) {
       console.error("Error fetching resume:", error);
@@ -492,14 +496,17 @@ export async function registerRoutes(
     }
   });
 
-  // Save resume
+  // Save manual resume (user-scoped)
   app.post("/api/resume", async (req, res) => {
     try {
-      const { content } = req.body;
+      const { content, userId } = req.body;
       if (typeof content !== "string") {
         return res.status(400).json({ error: "Content must be a string" });
       }
-      const resume = await storage.saveResume(content);
+      if (!userId) {
+        return res.status(400).json({ error: "User ID is required" });
+      }
+      const resume = await storage.saveManualResume(userId, content);
       res.status(201).json(resume);
     } catch (error) {
       console.error("Error saving resume:", error);
@@ -750,7 +757,8 @@ export async function registerRoutes(
         return res.json({ 
           hhConnected: false, 
           user: null, 
-          resumes: [] 
+          hhResumes: [],
+          manualResume: "",
         });
       }
 
@@ -759,7 +767,8 @@ export async function registerRoutes(
         return res.json({ 
           hhConnected: false, 
           user: null, 
-          resumes: [] 
+          hhResumes: [],
+          manualResume: "",
         });
       }
 
@@ -768,6 +777,9 @@ export async function registerRoutes(
         .where(eq(resumes.userId, userId));
       
       const hhConnected = !!(user.hhAccessToken && user.hhUserId);
+      
+      const hhResumes = userResumes.filter(r => r.hhResumeId !== null);
+      const manualResumeRecord = userResumes.find(r => r.hhResumeId === null);
       
       res.json({
         hhConnected,
@@ -778,13 +790,14 @@ export async function registerRoutes(
           lastName: user.lastName,
           hhUserId: user.hhUserId,
         },
-        resumes: userResumes.map(r => ({
+        hhResumes: hhResumes.map(r => ({
           id: r.id,
           hhResumeId: r.hhResumeId,
           title: r.title,
           selected: r.selected,
           updatedAt: r.updatedAt,
         })),
+        manualResume: manualResumeRecord?.content || "",
       });
     } catch (error) {
       console.error("[Profile] Error:", error);

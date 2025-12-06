@@ -14,13 +14,14 @@ interface ProfileData {
     lastName: string | null;
     hhUserId: string | null;
   } | null;
-  resumes: Array<{
+  hhResumes: Array<{
     id: number;
     hhResumeId: string | null;
     title: string | null;
     selected: boolean;
     updatedAt: string;
   }>;
+  manualResume: string;
 }
 
 async function fetchProfile(userId: string | null): Promise<ProfileData> {
@@ -30,17 +31,11 @@ async function fetchProfile(userId: string | null): Promise<ProfileData> {
   return response.json();
 }
 
-async function fetchManualResume(): Promise<{ content: string }> {
-  const response = await fetch("/api/resume");
-  if (!response.ok) return { content: "" };
-  return response.json();
-}
-
-async function saveManualResume(content: string): Promise<void> {
+async function saveManualResume(userId: string, content: string): Promise<void> {
   const response = await fetch("/api/resume", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ userId, content }),
   });
   if (!response.ok) throw new Error("Failed to save resume");
 }
@@ -80,20 +75,24 @@ export default function Profile() {
     }
   }, []);
 
-  const { data: profile, isLoading: profileLoading, refetch: refetchProfile } = useQuery({
+  const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: ["profile", userId],
     queryFn: () => fetchProfile(userId),
   });
 
-  const { data: manualResume } = useQuery({
-    queryKey: ["manualResume"],
-    queryFn: fetchManualResume,
-  });
+  useEffect(() => {
+    if (profile) {
+      setResumeText(profile.manualResume || "");
+    }
+  }, [profile]);
 
   const saveMutation = useMutation({
-    mutationFn: saveManualResume,
+    mutationFn: () => {
+      if (!userId) throw new Error("User ID required");
+      return saveManualResume(userId, resumeText);
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["manualResume"] });
+      queryClient.invalidateQueries({ queryKey: ["profile", userId] });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     },
@@ -113,14 +112,11 @@ export default function Profile() {
     },
   });
 
-  useEffect(() => {
-    if (manualResume?.content) {
-      setResumeText(manualResume.content);
-    }
-  }, [manualResume]);
-
   const handleSave = () => {
-    saveMutation.mutate(resumeText);
+    if (!userId) {
+      return;
+    }
+    saveMutation.mutate();
   };
 
   const handleLogin = () => {
@@ -130,7 +126,9 @@ export default function Profile() {
   const handleLogout = () => {
     localStorage.removeItem("userId");
     setUserId(null);
+    setResumeText("");
     queryClient.invalidateQueries({ queryKey: ["profile"] });
+    queryClient.clear();
   };
 
   const handleSelectResume = (resumeId: number) => {
@@ -155,7 +153,7 @@ export default function Profile() {
 
   const hhConnected = profile?.hhConnected ?? false;
   const user = profile?.user;
-  const hhResumes = profile?.resumes ?? [];
+  const hhResumes = profile?.hhResumes ?? [];
 
   return (
     <div className="p-6 pb-24 max-w-lg mx-auto">
@@ -300,12 +298,20 @@ export default function Profile() {
               : "Используется для генерации сопроводительных писем в демо-режиме"
             }
           </p>
+          
+          {!userId && (
+            <p className="text-sm text-amber-600 bg-amber-50 p-3 rounded-xl">
+              Войдите через hh.ru, чтобы сохранить своё ручное резюме
+            </p>
+          )}
+          
           <Textarea
             placeholder="Введите информацию о себе, опыте работы, навыках..."
             value={resumeText}
             onChange={(e) => setResumeText(e.target.value)}
             className="min-h-[200px] resize-none rounded-xl border-gray-200 focus:border-indigo-300 focus:ring-indigo-200"
             data-testid="input-resume"
+            disabled={!userId}
           />
           
           <div className="flex items-center justify-between">
@@ -314,7 +320,7 @@ export default function Profile() {
             </p>
             <Button
               onClick={handleSave}
-              disabled={saveMutation.isPending}
+              disabled={saveMutation.isPending || !userId}
               className="rounded-full px-6 bg-indigo-600 hover:bg-indigo-700"
               data-testid="button-save-resume"
             >
