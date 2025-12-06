@@ -1,0 +1,90 @@
+Нужно полностью исправить систему истории откликов, потому что сейчас она не привязана к пользователям и каждый новый пользователь видит отклики других людей.
+
+Сделай всё ниже.
+
+====================================================================================================
+1) ОБНОВИТЬ СХЕМУ ТАБЛИЦЫ applications (Drizzle + SQL миграция)
+====================================================================================================
+
+Текущая таблица applications должна быть переписана.
+
+Новая структура:
+
+applications = pgTable("applications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  vacancyId: text("vacancy_id").notNull(),        // HH vacancy id
+  coverLetter: text("cover_letter").notNull(),
+  status: text("status").notNull(),               // success / failed
+  hhResponse: jsonb("hh_response"),               // negotiationId или ошибки HH API
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
+2) Удалить старые колонки:
+- job_id
+- любые FK на jobs
+
+3) Создать SQL миграцию:
+
+ALTER TABLE applications DROP COLUMN IF EXISTS job_id;
+ALTER TABLE applications ADD COLUMN user_id INTEGER NOT NULL;
+ALTER TABLE applications ADD COLUMN vacancy_id TEXT NOT NULL;
+ALTER TABLE applications ADD COLUMN status TEXT NOT NULL DEFAULT 'success';
+ALTER TABLE applications ADD COLUMN hh_response JSONB;
+ALTER TABLE applications ADD CONSTRAINT applications_user_id_fk FOREIGN KEY (user_id) REFERENCES users(id);
+
+====================================================================================================
+2) ДОРАБОТАТЬ BACKEND — сохранение откликов
+====================================================================================================
+
+В файле /server/routes/applications.ts:
+
+При создании отклика (async apply):
+
+1. userId брать из req.user.id
+
+2. Сохранять отклик так:
+
+await db.insert(applications).values({
+  userId: req.user.id,
+  vacancyId,
+  coverLetter,
+  status: successOrFail,
+  hhResponse: responseJson
+});
+
+3. Удалить всё, что связано с локальным job_id.
+
+====================================================================================================
+3) ДОРАБОТАТЬ BACKEND — загрузка истории откликов
+====================================================================================================
+
+GET /api/applications должно возвращать ТОЛЬКО отклики текущего пользователя:
+
+const items = await db
+  .select()
+  .from(applications)
+  .where(eq(applications.userId, req.user.id))
+  .orderBy(desc(applications.createdAt));
+
+Вернуть items.
+
+====================================================================================================
+4) ОБНОВИТЬ FRONTEND
+====================================================================================================
+
+1. История откликов должна отображать только записи, полученные через GET /api/applications.
+2. Не показывать историю, если пользователь не авторизован.
+3. В компонентах HistoryCard использовать vacancyId вместо job.id.
+
+====================================================================================================
+5) ПРОВЕРКА РАБОТЫ
+====================================================================================================
+
+После выполнения вывести:
+
+- список изменённых файлов
+- финальную структуру таблицы applications
+- пример создаваемой записи
+- пример SQL запроса для истории откликов
+- подтверждение, что теперь каждый пользователь видит только свои отклики

@@ -498,7 +498,7 @@ export default function VacanciesPage() {
                   </div>
                   <div>
                     <p className="font-medium text-gray-900">Отклики от нейросети</p>
-                    <p className="text-sm text-gray-500">ИИ генерирует персонализированное сопроводительное письмо</p>
+                    <p className="text-sm text-gray-500">ИИ на основе вашего резюме генерирует эффективное сопроводительное письмо</p>
                   </div>
                 </div>
               </div>
