@@ -13,7 +13,7 @@ const __dirnameResolved = typeof __dirname === "undefined"
 const TOKEN_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth";
 const CHAT_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions";
 
-// ✓ Грузим сертификаты Минцифры (root + sub)
+// ✓ Загружаем сертификаты Минцифры
 const certRoot = fs.readFileSync(
   path.resolve(__dirnameResolved, "certs/russian_trusted_root_ca_pem.crt"),
   "utf8"
@@ -22,16 +22,19 @@ const certSub = fs.readFileSync(
   path.resolve(__dirnameResolved, "certs/russian_trusted_sub_ca_pem.crt"),
   "utf8"
 );
+
 const caCerts = [certRoot, certSub];
 
-// ✓ Создаём Agent с сертификатами Минцифры
+// ✓ Создаём HTTPS агент для GigaChat
 const gigaChatAgent = new Agent({
   connect: {
     ca: caCerts
   }
 });
 
-// ✓ Получаем токен GigaChat
+// ================================
+// 1. Получение access_token GigaChat
+// ================================
 export async function getAccessToken(): Promise<string | null> {
   try {
     const authKey = process.env.GIGACHAT_AUTH_KEY!;
@@ -63,9 +66,9 @@ export async function getAccessToken(): Promise<string | null> {
   }
 }
 
-// ===================
-// Генерация письма
-// ===================
+// ================================
+// 2. Генерация сопроводительного письма
+// ================================
 export async function generateCoverLetter(resume: string, vacancy: Job): Promise<string> {
   const token = await getAccessToken();
   if (!token) {
@@ -73,20 +76,30 @@ export async function generateCoverLetter(resume: string, vacancy: Job): Promise
     return fallbackLetter(vacancy);
   }
 
+  // ------- НОВЫЙ ЖЁСТКИЙ ПРОМПТ -------
   const prompt = `
-Ты должен создать сопроводительное письмо строго на основе данных из резюме.
+Ты пишешь сопроводительное письмо строго на основе резюме.
 
 Жёсткие правила:
-- нельзя придумывать цифры, компании, метрики
-- нельзя добавлять опыт, которого нет в резюме
-- если нет цифр — не используй цифры
-- только plain-text
+1) Нельзя придумывать факты, достижения, цифры, компании, навыки, опыт.
+2) Нельзя использовать информацию, отсутствующую в резюме.
+3) Если в резюме нет цифр — не используй цифры.
+4) Только plain-text. Без markdown, *, #, -, _, списков и заголовков.
+5) Не использовать обращения ("уважаемый", "меня зовут", "я хотел бы").
+6) Не упоминать название компании или название вакансии.
+7) Пиши коротко, профессионально и по делу.
 
-Резюме:
+Единственный источник информации:
+=== РЕЗЮМЕ НАЧАЛО ===
 ${resume}
+=== РЕЗЮМЕ КОНЕЦ ===
 
-Вакансия:
-${vacancy.title}, ${vacancy.company}
+Структура письма:
+1) Одно короткое предложение с профессиональным профилем, строго из резюме.
+2) 1–3 ключевые компетенции, присутствующие в резюме.
+3) Короткое завершающее предложение о готовности к обсуждению.
+
+Выведи только текст письма.
 `.trim();
 
   try {
@@ -106,6 +119,7 @@ ${vacancy.title}, ${vacancy.company}
     } as any);
 
     const data = await response.json() as any;
+
     if (!response.ok) {
       console.error("[GigaChat] CHAT ERROR:", data);
       return fallbackLetter(vacancy);
@@ -114,20 +128,30 @@ ${vacancy.title}, ${vacancy.company}
     const text = data.choices?.[0]?.message?.content;
     if (!text) return fallbackLetter(vacancy);
 
-    return text.trim();
+    return sanitize(text.trim());
   } catch (err) {
     console.error("[GigaChat] GENERATION ERROR:", err);
     return fallbackLetter(vacancy);
   }
 }
 
-// ===================
-// Фоллбек письмо
-// ===================
+// ================================
+// 3. Санитайзер — убираем markdown
+// ================================
+function sanitize(text: string): string {
+  return text
+    .replace(/[*#_\-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// ================================
+// 4. Fallback письмо
+// ================================
 function fallbackLetter(vacancy: Job): string {
   return `
-Имею релевантный опыт работы и развивал продуктовые и маркетинговые направления. Работал с аналитикой, гипотезами, улучшением процессов и ростом метрик.
+Имею релевантный опыт работы и занимался развитием маркетинговых и продуктовых направлений. Работал с аналитикой, гипотезами, процессами и улучшением метрик.
 
-Готов обсудить, как мой опыт может быть полезен для вас.
+Готов обсудить, как мой опыт может быть полезен вашей компании.
 `.trim();
 }
