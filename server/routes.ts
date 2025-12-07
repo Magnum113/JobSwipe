@@ -603,6 +603,21 @@ export async function registerRoutes(
     }
   });
 
+  // Get pending applications count (where cover letter is still being generated)
+  app.get("/api/applications/pending-count", async (req, res) => {
+    try {
+      const userId = req.query.userId as string | undefined;
+      if (!userId) {
+        return res.json({ count: 0 });
+      }
+      const count = await storage.getPendingApplicationsCount(userId);
+      res.json({ count });
+    } catch (error) {
+      console.error("Error fetching pending count:", error);
+      res.json({ count: 0 });
+    }
+  });
+
   // Update application cover letter
   app.patch("/api/applications/:id/cover-letter", async (req, res) => {
     try {

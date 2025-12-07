@@ -1,12 +1,21 @@
 import { Briefcase, History, User } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { usePendingCount } from "@/lib/pendingStore";
+import { useQuery } from "@tanstack/react-query";
 
 export type TabType = "vacancies" | "history" | "profile";
 
 interface TabBarProps {
   activeTab: TabType;
   onTabChange: (tab: TabType) => void;
+}
+
+async function fetchPendingCount(): Promise<number> {
+  const userId = localStorage.getItem("userId");
+  if (!userId) return 0;
+  const response = await fetch(`/api/applications/pending-count?userId=${userId}`);
+  if (!response.ok) return 0;
+  const data = await response.json();
+  return data.count || 0;
 }
 
 const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
@@ -29,10 +38,14 @@ function Badge({ count }: { count: number }) {
 }
 
 export function TabBar({ activeTab, onTabChange }: TabBarProps) {
-  const pendingCount = usePendingCount();
+  const { data: pendingCount = 0 } = useQuery({
+    queryKey: ["pendingApplicationsCount"],
+    queryFn: fetchPendingCount,
+    refetchInterval: 2000,
+  });
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 shadow-lg z-50">
+    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 shadow-lg z-50">
       <div className="flex items-center justify-around h-16 max-w-lg mx-auto">
         {tabs.map((tab) => (
           <button
@@ -41,8 +54,8 @@ export function TabBar({ activeTab, onTabChange }: TabBarProps) {
             className={cn(
               "flex flex-col items-center justify-center flex-1 h-full gap-1 transition-colors",
               activeTab === tab.id
-                ? "text-indigo-600 dark:text-indigo-400"
-                : "text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                ? "text-indigo-600"
+                : "text-gray-400 hover:text-gray-600"
             )}
             data-testid={`tab-${tab.id}`}
           >

@@ -48,10 +48,10 @@ export function FullPageLoader() {
 
 export function CenteredLoader({ message }: { message?: string }) {
   return (
-    <div className="absolute inset-0 flex items-center justify-center z-40">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-gray-50/80 dark:bg-gray-900/80">
       <div className="flex flex-col items-center gap-4">
         <div className="relative w-12 h-12">
-          <div className="absolute inset-0 rounded-full border-[3px] border-gray-100 dark:border-gray-800" />
+          <div className="absolute inset-0 rounded-full border-[3px] border-gray-200 dark:border-gray-700" />
           <div 
             className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-indigo-500 dark:border-t-indigo-400"
             style={{ animation: "spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite" }}
@@ -65,7 +65,7 @@ export function CenteredLoader({ message }: { message?: string }) {
           </div>
         </div>
         {message && (
-          <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">{message}</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">{message}</p>
         )}
       </div>
     </div>

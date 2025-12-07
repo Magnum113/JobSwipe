@@ -7,7 +7,7 @@ import {
   jobs, swipes, users, resumes, applications 
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, notInArray, inArray, desc, ilike, or, and, gte, lte, sql } from "drizzle-orm";
+import { eq, notInArray, inArray, desc, ilike, or, and, gte, lte, sql, isNull } from "drizzle-orm";
 
 export interface JobFilters {
   company?: string;
@@ -42,6 +42,7 @@ export interface IStorage {
   getApplicationsByUser(userId: string): Promise<Application[]>;
   getAllApplications(): Promise<Application[]>;
   updateApplicationCoverLetter(id: number, coverLetter: string): Promise<Application | undefined>;
+  getPendingApplicationsCount(userId: string): Promise<number>;
 }
 
 export class DbStorage implements IStorage {
@@ -287,6 +288,20 @@ export class DbStorage implements IStorage {
       .where(eq(applications.id, id))
       .returning();
     return updated;
+  }
+
+  async getPendingApplicationsCount(userId: string): Promise<number> {
+    const result = await db.select()
+      .from(applications)
+      .where(and(
+        eq(applications.userId, userId),
+        isNull(applications.coverLetter),
+        or(
+          eq(applications.status, "pending"),
+          eq(applications.status, "queued")
+        )
+      ));
+    return result.length;
   }
 }
 

@@ -14,6 +14,28 @@ async function fetchApplications(userId: string): Promise<Application[]> {
   return response.json();
 }
 
+const STATUS_TRANSLATIONS: Record<string, string> = {
+  "pending": "В ожидании",
+  "success": "Отправлено",
+  "submitted": "Отправлено",
+  "failed": "Ошибка",
+  "demo": "Демо",
+  "queued": "В очереди",
+};
+
+function getStatusLabel(status: string): string {
+  return STATUS_TRANSLATIONS[status.toLowerCase()] || status;
+}
+
+function getStatusColor(status: string): string {
+  const s = status.toLowerCase();
+  if (s === "success" || s === "submitted") return "bg-green-100 text-green-700";
+  if (s === "failed") return "bg-red-100 text-red-700";
+  if (s === "pending" || s === "queued") return "bg-yellow-100 text-yellow-700";
+  if (s === "demo") return "bg-blue-100 text-blue-700";
+  return "bg-gray-100 text-gray-700";
+}
+
 function ApplicationCard({ application }: { application: Application }) {
   const [expanded, setExpanded] = useState(false);
   
@@ -26,6 +48,8 @@ function ApplicationCard({ application }: { application: Application }) {
   });
 
   const isGenerating = !application.coverLetter;
+  const statusLabel = getStatusLabel(application.status);
+  const statusColor = getStatusColor(application.status);
 
   return (
     <Card className="rounded-2xl border-0 shadow-md overflow-hidden">
@@ -41,9 +65,9 @@ function ApplicationCard({ application }: { application: Application }) {
                 <span className="font-medium">{application.company}</span>
               </div>
             </div>
-            <Badge className="bg-green-100 text-green-700 hover:bg-green-100 rounded-full px-3">
+            <Badge className={`${statusColor} rounded-full px-3`}>
               <CheckCircle className="w-3 h-3 mr-1" />
-              {application.status}
+              {statusLabel}
             </Badge>
           </div>
           

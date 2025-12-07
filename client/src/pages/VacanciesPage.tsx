@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { incrementPending, decrementPending } from "@/lib/pendingStore";
 import { CenteredLoader } from "@/components/ui/loader";
 import type { HHJob, HHJobsResponse, Resume } from "@shared/schema";
 
@@ -300,9 +299,6 @@ export default function VacanciesPage() {
       const isAuthenticated = authStatus?.authenticated && userId;
       const resumeContent = resume?.content || "";
       
-      // Increment pending count for badge
-      incrementPending();
-      
       // Fire async request - don't wait for result
       applyAsync({
         userId: isAuthenticated ? userId : null,
@@ -317,12 +313,12 @@ export default function VacanciesPage() {
         resumeText: resumeContent,
         isDemo: !isAuthenticated,
       }).then(() => {
-        // Decrement pending count and refresh applications list
-        decrementPending();
+        // Refresh applications list and pending count
         queryClient.invalidateQueries({ queryKey: ["applications"] });
+        queryClient.invalidateQueries({ queryKey: ["pendingApplicationsCount"] });
       }).catch((err) => {
         console.error("Failed to queue application:", err);
-        decrementPending();
+        queryClient.invalidateQueries({ queryKey: ["pendingApplicationsCount"] });
       });
     }
 
