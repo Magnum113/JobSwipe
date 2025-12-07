@@ -1,3 +1,12 @@
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirnameResolved = typeof __dirname === "undefined"
+  ? path.dirname(fileURLToPath(import.meta.url))
+  : __dirname;
+
+process.env.NODE_EXTRA_CA_CERTS = path.resolve(__dirnameResolved, "certs/russian_trusted_root_ca_pem.crt");
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 import "./setupCerts";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";

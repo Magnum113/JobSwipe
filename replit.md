@@ -164,13 +164,19 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+- **2025-12-07**: Deployment fix for GigaChat certificates
+  - **Build Script**: `script/build.ts` now copies `server/certs/*` to `dist/certs/` during build
+  - **ESM/CJS Compatibility**: All server files use `__dirnameResolved` pattern that works in both ESM (dev) and CJS (production)
+  - **Certificate Files**: Russian Trusted Root CA and Sub CA certificates for GigaChat TLS connections
+  - **Status Translations**: Application statuses translated to Russian (В ожидании, Отправлено, Ошибка, Демо)
+  - **Pending Count API**: New `/api/applications/pending-count` endpoint with status filtering (pending/queued only)
+  - **Database Query**: Badge now uses React Query polling of pending count instead of client-side counter
+
 - **2025-12-07**: UI improvements and pending applications badge
   - **Modern Loader**: New centered loader with double-ring animation, dark/light theme support
   - **Loader Component**: `client/src/components/ui/loader.tsx` with CenteredLoader, FullPageLoader variants
-  - **Pending Store**: Global state for pending applications count via useSyncExternalStore
-  - **Badge Counter**: Green (#22C55E) iOS-style notification badge on History tab icon
+  - **Badge Counter**: Green (#22C55E) iOS-style notification badge on History tab icon using React Query
   - **Toast Removed**: Removed "Отклик в очереди" toast notification
-  - **Badge Logic**: incrementPending() on swipe right, decrementPending() on async completion/error
 
 - **2025-12-06**: Implemented persistent swipe tracking
   - **Schema Update**: `swipes` table now uses `user_id` (varchar FK) and `vacancy_id` (text) instead of old `job_id` integer
