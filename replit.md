@@ -164,13 +164,14 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
-- **2025-12-07**: Deployment fix for GigaChat certificates
-  - **Build Script**: `script/build.ts` now copies `server/certs/*` to `dist/certs/` during build
-  - **ESM/CJS Compatibility**: All server files use `__dirnameResolved` pattern that works in both ESM (dev) and CJS (production)
-  - **Certificate Files**: Russian Trusted Root CA and Sub CA certificates for GigaChat TLS connections
+- **2025-12-07**: GigaChat integration improvements
+  - **Undici Agent**: Replaced require("undici").Agent with proper imported Agent class
+  - **Both Certificates**: Now loads both russian_trusted_root_ca_pem.crt and russian_trusted_sub_ca_pem.crt
+  - **Test Endpoint**: New `/api/test-gigachat` endpoint to verify GigaChat connectivity
+  - **Build Script**: `script/build.ts` copies `server/certs/*` to `dist/certs/` during build
+  - **ESM/CJS Compatibility**: All server files use `__dirnameResolved` pattern for both ESM (dev) and CJS (production)
   - **Status Translations**: Application statuses translated to Russian (В ожидании, Отправлено, Ошибка, Демо)
   - **Pending Count API**: New `/api/applications/pending-count` endpoint with status filtering (pending/queued only)
-  - **Database Query**: Badge now uses React Query polling of pending count instead of client-side counter
 
 - **2025-12-07**: UI improvements and pending applications badge
   - **Modern Loader**: New centered loader with double-ring animation, dark/light theme support

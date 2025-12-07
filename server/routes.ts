@@ -6,7 +6,7 @@ import { users, resumes, applications } from "@shared/schema";
 import { insertJobSchema, insertSwipeSchema, insertApplicationSchema, type Job, type HHJob, type HHJobsResponse } from "@shared/schema";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
-import { generateCoverLetter } from "./gigachat";
+import { generateCoverLetter, getAccessToken } from "./gigachat";
 import {
   getAuthUrl,
   exchangeCodeForTokens,
@@ -338,6 +338,28 @@ export async function registerRoutes(
   
   // Seed jobs on startup
   await storage.seedJobs(SEED_JOBS);
+
+  // Test GigaChat integration
+  app.get("/api/test-gigachat", async (_req, res) => {
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        return res.json({ ok: false, error: "Token failed" });
+      }
+
+      const response = await fetch("https://gigachat.devices.sberbank.ru/api/v1/models", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json"
+        }
+      });
+
+      const data = await response.text();
+      res.send(data);
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
 
   // HH.ru API - Get jobs with batch pagination
   // Each batch = one HH API page with per_page=30

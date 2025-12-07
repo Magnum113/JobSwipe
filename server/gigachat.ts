@@ -1,7 +1,10 @@
+import "undici";
 import type { Job } from "@shared/schema";
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
+import { Agent } from "undici";
 
 const __dirnameResolved = typeof __dirname === "undefined"
   ? path.dirname(fileURLToPath(import.meta.url))
@@ -10,16 +13,28 @@ const __dirnameResolved = typeof __dirname === "undefined"
 const TOKEN_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth";
 const CHAT_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions";
 
-// ✓ Грузим сертификат Минцифры
-const caCert = fs.readFileSync(
-  path.resolve(__dirnameResolved, "certs/russian_trusted_root_ca_pem.crt")
+// ✓ Грузим сертификаты Минцифры (root + sub)
+const certRoot = fs.readFileSync(
+  path.resolve(__dirnameResolved, "certs/russian_trusted_root_ca_pem.crt"),
+  "utf8"
 );
+const certSub = fs.readFileSync(
+  path.resolve(__dirnameResolved, "certs/russian_trusted_sub_ca_pem.crt"),
+  "utf8"
+);
+const caCerts = [certRoot, certSub];
+
+// ✓ Создаём Agent с сертификатами Минцифры
+const gigaChatAgent = new Agent({
+  connect: {
+    ca: caCerts
+  }
+});
 
 // ✓ Получаем токен GigaChat
-async function getAccessToken(): Promise<string | null> {
+export async function getAccessToken(): Promise<string | null> {
   try {
     const authKey = process.env.GIGACHAT_AUTH_KEY!;
-    const clientId = process.env.GIGACHAT_CLIENT_ID!;
     const scope = process.env.GIGACHAT_SCOPE || "GIGACHAT_API_PERS";
 
     const response = await fetch(TOKEN_URL, {
@@ -30,21 +45,18 @@ async function getAccessToken(): Promise<string | null> {
         RqUID: crypto.randomUUID(),
         Authorization: `Basic ${authKey}`,
       },
-      body: `scope=${scope}&client_id=${clientId}&grant_type=client_credentials`,
-      dispatcher: new (require("undici").Agent)({
-        connect: {
-          ca: caCert
-        }
-      })
-    });
+      body: new URLSearchParams({ scope }).toString(),
+      dispatcher: gigaChatAgent
+    } as any);
 
-    const data = await response.json();
     if (!response.ok) {
-      console.log("[GigaChat] TOKEN ERROR RESPONSE:", data);
+      console.log("[GigaChat] TOKEN ERROR RESPONSE:");
+      console.log(await response.text());
       return null;
     }
 
-    return data.access_token;
+    const data = await response.json() as any;
+    return data.access_token || null;
   } catch (err) {
     console.error("[GigaChat] TOKEN FAILURE:", err);
     return null;
@@ -90,14 +102,10 @@ ${vacancy.title}, ${vacancy.company}
           { role: "user", content: prompt }
         ],
       }),
-      dispatcher: new (require("undici").Agent)({
-        connect: {
-          ca: caCert
-        }
-      })
-    });
+      dispatcher: gigaChatAgent
+    } as any);
 
-    const data = await response.json();
+    const data = await response.json() as any;
     if (!response.ok) {
       console.error("[GigaChat] CHAT ERROR:", data);
       return fallbackLetter(vacancy);
