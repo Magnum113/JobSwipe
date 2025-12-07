@@ -307,7 +307,7 @@ export default function VacanciesPage() {
           title: currentJob.title,
           company: currentJob.company,
           salary: currentJob.salary,
-          description: currentJob.description || "",
+          description: currentJob.descriptionFull || currentJob.description || "",
           tags: currentJob.tags || [],
         },
         resumeText: resumeContent,

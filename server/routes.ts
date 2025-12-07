@@ -99,21 +99,36 @@ function mapEmploymentType(employment: HHVacancy["employment"], schedule: HHVaca
   return "full-time";
 }
 
-function adaptHHVacancy(vacancy: HHVacancy): HHJob {
-  const description = vacancy.snippet.responsibility || vacancy.snippet.requirement || "Описание отсутствует";
-  const cleanDescription = description.replace(/<[^>]*>/g, "");
-  
+async function adaptHHVacancy(vacancy: HHVacancy): Promise<HHJob> {
+  // 1. Короткое описание для карточек
+  const short = vacancy.snippet.responsibility || vacancy.snippet.requirement || "Описание отсутствует";
+  const shortClean = short.replace(/<[^>]*>/g, "");
+
+  // 2. Полное описание — загружаем отдельно
+  let fullClean = "";
+  try {
+    const resp = await fetch(`https://api.hh.ru/vacancies/${vacancy.id}`);
+    if (resp.ok) {
+      const full = await resp.json();
+      fullClean = (full.description || "").replace(/<[^>]*>/g, "");
+    }
+  } catch (e) {
+    console.log("Failed to load full vacancy description:", e);
+  }
+
+  // 3. Адаптация остальных данных
   let logoUrl = vacancy.employer.logo_urls?.["240"] || vacancy.employer.logo_urls?.original || undefined;
   if (logoUrl && logoUrl.includes("employer-logo-round")) {
     logoUrl = logoUrl.replace("employer-logo-round", "employer-logo");
   }
-  
+
   return {
     id: vacancy.id,
     title: vacancy.name,
     company: vacancy.employer.name,
     salary: formatSalary(vacancy.salary),
-    description: cleanDescription,
+    description: shortClean,         // ← карточки возвращают короткое описание
+    descriptionFull: fullClean,      // ← ПОЛНОЕ описание (это важно!)
     location: vacancy.area.name,
     employmentType: mapEmploymentType(vacancy.employment, vacancy.schedule),
     tags: vacancy.professional_roles.map(role => role.name).slice(0, 5),
