@@ -70,6 +70,13 @@ export async function getAccessToken(): Promise<string | null> {
 // 2. Генерация сопроводительного письма
 // ================================
 export async function generateCoverLetter(resume: string, vacancy: Job): Promise<string> {
+console.log("\n[GIGACHAT DEBUG] Vacancy incoming:");
+console.log("Title:", vacancy.title);
+console.log("Company:", vacancy.company);
+console.log("Salary:", vacancy.salary);
+console.log("Description length:", vacancy.description?.length);
+console.log("Tags:", vacancy.tags);
+
   console.log("🔥🔥🔥 generateCoverLetter CALLED!");
   console.log("🔥 Resume length:", resume?.length);
   console.log("🔥 Resume first 300 chars:", resume?.slice(0, 300));

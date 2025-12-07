@@ -1132,7 +1132,30 @@ export async function registerRoutes(
               tags: vacancyData?.tags || [],
             } as Job;
             
-            coverLetter = await generateCoverLetter(resumeText || "", vacancy);
+            // --- NEW: Get selected resume text ---
+let resumeTextFinal = "";
+
+try {
+  const [selectedResume] = await db.select()
+    .from(resumes)
+    .where(and(
+      eq(resumes.userId, userId),
+      eq(resumes.selected, true)
+    ));
+
+  if (selectedResume) {
+    resumeTextFinal = selectedResume.content || "";
+    console.log("🔥 Loaded resume from DB, length:", resumeTextFinal.length);
+  } else {
+    console.log("🔥 No selected resume found");
+  }
+} catch (e) {
+  console.log("🔥 Error loading resume:", e);
+}
+
+// --- Generate cover letter using real resume ---
+coverLetter = await generateCoverLetter(resumeTextFinal, vacancy);
+
             console.log("[Async Apply] Cover letter generated for app:", pendingApp.id);
           } catch (err) {
             console.error("[Async Apply] Cover letter generation failed:", err);
