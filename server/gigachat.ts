@@ -13,31 +13,46 @@ const __dirnameResolved = typeof __dirname === "undefined"
 const TOKEN_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth";
 const CHAT_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions";
 
-// ✓ Загружаем сертификаты Минцифры
-const certRoot = fs.readFileSync(
-  path.resolve(__dirnameResolved, "certs/russian_trusted_root_ca_pem.crt"),
-  "utf8"
-);
-const certSub = fs.readFileSync(
-  path.resolve(__dirnameResolved, "certs/russian_trusted_sub_ca_pem.crt"),
-  "utf8"
-);
+// ✓ Загружаем сертификаты Минцифры (с fallback если файлы не найдены)
+let caCerts: string[] = [];
+let gigaChatAgent: Agent | undefined;
 
-const caCerts = [certRoot, certSub];
-
-// ✓ Создаём HTTPS агент для GigaChat
-const gigaChatAgent = new Agent({
-  connect: {
-    ca: caCerts
+try {
+  const certRootPath = path.resolve(__dirnameResolved, "certs/russian_trusted_root_ca_pem.crt");
+  const certSubPath = path.resolve(__dirnameResolved, "certs/russian_trusted_sub_ca_pem.crt");
+  
+  if (fs.existsSync(certRootPath) && fs.existsSync(certSubPath)) {
+    caCerts = [
+      fs.readFileSync(certRootPath, "utf8"),
+      fs.readFileSync(certSubPath, "utf8")
+    ];
+    gigaChatAgent = new Agent({
+      connect: { ca: caCerts }
+    });
+    console.log("[GigaChat] Certificates loaded successfully");
+  } else {
+    console.warn("[GigaChat] Certificate files not found, GigaChat will be disabled");
   }
-});
+} catch (err) {
+  console.warn("[GigaChat] Failed to load certificates:", err);
+}
 
 // ================================
 // 1. Получение access_token GigaChat
 // ================================
 export async function getAccessToken(): Promise<string | null> {
+  if (!gigaChatAgent) {
+    console.warn("[GigaChat] Agent not initialized, certificates may be missing");
+    return null;
+  }
+  
   try {
-    const authKey = process.env.GIGACHAT_AUTH_KEY!;
+    const authKey = process.env.GIGACHAT_AUTH_KEY;
+    if (!authKey) {
+      console.warn("[GigaChat] GIGACHAT_AUTH_KEY not set");
+      return null;
+    }
+    
     const scope = process.env.GIGACHAT_SCOPE || "GIGACHAT_API_PERS";
 
     const response = await fetch(TOKEN_URL, {

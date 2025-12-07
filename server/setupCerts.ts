@@ -18,5 +18,4 @@ if (!process.env.DISABLE_TLS_REJECT_UNAUTHORIZED) {
   console.log("[Certs] TLS verification enabled.");
 } else {
   console.log("[Certs] TLS verification DISABLED (NOT secure).");
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 }

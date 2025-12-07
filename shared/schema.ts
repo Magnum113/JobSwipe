@@ -105,13 +105,20 @@ export interface HHJob {
   title: string;
   company: string;
   salary: string;
+
+  // Короткое описание для карточек
   description: string;
+
+  // Полное описание — для генерации сопроводительного письма Гигачатом
+  descriptionFull?: string;
+
   location: string;
   employmentType: string;
   tags: string[];
   url?: string;
   logoUrl?: string;
 }
+
 
 export interface HHJobsResponse {
   jobs: HHJob[];
