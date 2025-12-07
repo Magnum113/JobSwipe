@@ -44,8 +44,24 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
+// Health check endpoints for Autoscale
 app.get("/health", (_req, res) => {
   res.status(200).send("OK");
+});
+
+// Replit Autoscale checks "/" - respond quickly for health probes
+app.get("/", (req, res, next) => {
+  const userAgent = req.headers["user-agent"] || "";
+  // Respond to Replit health checks and curl/wget probes
+  if (userAgent.includes("kube-probe") || 
+      userAgent.includes("curl") || 
+      userAgent.includes("wget") ||
+      userAgent.includes("Replit") ||
+      !userAgent) {
+    return res.status(200).send("OK");
+  }
+  // For browsers, continue to serve SPA
+  next();
 });
 
 export function log(message: string, source = "express") {
