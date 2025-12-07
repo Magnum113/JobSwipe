@@ -164,6 +164,14 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+- **2025-12-07**: UI improvements and pending applications badge
+  - **Modern Loader**: New centered loader with double-ring animation, dark/light theme support
+  - **Loader Component**: `client/src/components/ui/loader.tsx` with CenteredLoader, FullPageLoader variants
+  - **Pending Store**: Global state for pending applications count via useSyncExternalStore
+  - **Badge Counter**: Green (#22C55E) iOS-style notification badge on History tab icon
+  - **Toast Removed**: Removed "Отклик в очереди" toast notification
+  - **Badge Logic**: incrementPending() on swipe right, decrementPending() on async completion/error
+
 - **2025-12-06**: Implemented persistent swipe tracking
   - **Schema Update**: `swipes` table now uses `user_id` (varchar FK) and `vacancy_id` (text) instead of old `job_id` integer
   - **Backend Filtering**: `/api/hh/jobs` accepts `userId` parameter and filters out already-swiped vacancies
