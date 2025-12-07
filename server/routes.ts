@@ -6,7 +6,7 @@ import { users, resumes, applications } from "@shared/schema";
 import { insertJobSchema, insertSwipeSchema, insertApplicationSchema, type Job, type HHJob, type HHJobsResponse } from "@shared/schema";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
-import { generateCoverLetter } from "./gemini";
+import { generateCoverLetter } from "./gigachat";
 import {
   getAuthUrl,
   exchangeCodeForTokens,
