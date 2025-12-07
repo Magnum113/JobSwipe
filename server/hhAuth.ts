@@ -6,7 +6,7 @@ const HH_CLIENT_ID = process.env.HH_CLIENT_ID!;
 const HH_CLIENT_SECRET = process.env.HH_CLIENT_SECRET!;
 
 export function getRedirectUri(): string {
-  return "https://job-swipe--kadimagomedov05.replit.app/auth/hh/callback";
+  return "https://jobswiper.ru/auth/hh/callback";
 }
 
 export function getAuthUrl(): string {
