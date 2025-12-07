@@ -1167,7 +1167,17 @@ try {
 } catch (e) {
   console.log("🔥 Error loading resume:", e);
 }
+            console.log("\n==================== FULL RESUME DEBUG ====================");
+            console.log("🔥 FULL RESUME — LENGTH:", (resumeText || "").length);
+            console.log("🔥 FULL RESUME — CONTENT BELOW:");
+            console.log("------------------------------------------------------------");
+            console.log(resumeText || "(EMPTY RESUME)");
+            console.log("------------------------------------------------------------");
+            console.log("🔥 FULL VACANCY OBJECT:");
+            console.dir(vacancy, { depth: 5 });
+            console.log("============================================================\n");
 
+            
 // --- Generate cover letter using real resume ---
 coverLetter = await generateCoverLetter(resumeTextFinal, vacancy);
 
