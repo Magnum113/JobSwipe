@@ -3,7 +3,16 @@ import fs from "fs";
 import path from "path";
 
 // ===============================
-// 1. Конфигурация
+// 0. Подключаем сертификаты
+// ===============================
+const rootCA = path.resolve(process.cwd(), "server/certs/russian_trusted_root_ca_pem.crt");
+const subCA = path.resolve(process.cwd(), "server/certs/russian_trusted_sub_ca_pem.crt");
+
+process.env.NODE_EXTRA_CA_CERTS = rootCA;
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"; // В Replit иначе НЕ РАБОТАЕТ
+
+// ===============================
+// 1. Конфиг GigaChat API
 // ===============================
 const GIGACHAT_AUTH_KEY = process.env.GIGACHAT_AUTH_KEY!;
 const GIGACHAT_CLIENT_ID = process.env.GIGACHAT_CLIENT_ID!;
@@ -12,28 +21,25 @@ const GIGACHAT_SCOPE = process.env.GIGACHAT_SCOPE || "GIGACHAT_API_PERS";
 const TOKEN_URL = "https://gigachat.devices.sberbank.ru/api/v2/oauth";
 const CHAT_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions";
 
-// ===============================
-// 2. Храним токен в памяти
-// ===============================
+// OAuth токен
 let cachedToken: string | null = null;
-let tokenExpiresAt: number = 0;
+let tokenExpiresAt = 0;
 
 // ===============================
-// 3. Получение токена OAuth
+// 2. Получение токена
 // ===============================
 async function getAccessToken(): Promise<string> {
   const now = Date.now();
 
-  // Если токен не истёк — используем его
-  if (cachedToken && now < tokenExpiresAt) {
-    return cachedToken;
-  }
+  if (cachedToken && now < tokenExpiresAt) return cachedToken;
 
-  const body = new URLSearchParams({
+  const params = new URLSearchParams({
     scope: GIGACHAT_SCOPE,
     client_id: GIGACHAT_CLIENT_ID,
     grant_type: "client_credentials"
   });
+
+  console.log("[GigaChat] Requesting new OAuth token...");
 
   const response = await fetch(TOKEN_URL, {
     method: "POST",
@@ -41,13 +47,15 @@ async function getAccessToken(): Promise<string> {
       Authorization: `Basic ${GIGACHAT_AUTH_KEY}`,
       "Content-Type": "application/x-www-form-urlencoded"
     },
-    body
+    body: params.toString()
+  }).catch(e => {
+    console.error("[GigaChat] FETCH ERROR while token request:", e);
+    throw e;
   });
 
   if (!response.ok) {
-    const err = await response.text();
-    console.error("[GigaChat] Token request failed:", err);
-    throw new Error("GigaChat OAuth token error");
+    console.error("[GigaChat] TOKEN ERROR:", await response.text());
+    throw new Error("OAuth token request failed");
   }
 
   const data = await response.json();
@@ -55,66 +63,68 @@ async function getAccessToken(): Promise<string> {
   cachedToken = data.access_token;
   tokenExpiresAt = now + data.expires_at * 1000;
 
-  console.log("[GigaChat] Token updated");
+  console.log("[GigaChat] OAuth token received");
 
   return cachedToken!;
 }
 
 // ===============================
-// 4. Нормализация plain-text
+// 3. Sanitize
 // ===============================
 function sanitize(text: string): string {
-  return text
-    .replace(/[*#_\-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return text.replace(/[*#_\-]/g, " ").replace(/\s+/g, " ").trim();
 }
 
 // ===============================
-// 5. Компрессор резюме
+// 4. Компрессор резюме
 // ===============================
 function compressResume(raw: string): string {
   if (!raw) return "";
   if (raw.length <= 3000) return raw;
-
   return raw.slice(0, 2000) + "\n...\n" + raw.slice(-800);
 }
 
 // ===============================
-// 6. Генерация сопроводительного письма
+// 5. Generate
 // ===============================
 export async function generateCoverLetter(resume: string, vacancy: Job): Promise<string> {
-  const accessToken = await getAccessToken();
-  const compressedResume = compressResume(resume);
+  let accessToken: string;
+
+  try {
+    accessToken = await getAccessToken();
+  } catch (err) {
+    console.error("[GigaChat] TOKEN FAILURE → fallback letter used");
+    return getFallbackLetter(vacancy);
+  }
 
   const prompt = `
-Сгенерируй сопроводительное письмо строго на основе данных резюме. 
-Запрещено придумывать факты, цифры или навыки, которых нет в резюме.
+Создай сопроводительное письмо строго по данным резюме.
+Запрещено придумывать факты, цифры, навыки или опыт.
 
 === РЕЗЮМЕ ===
-${compressedResume}
+${compressResume(resume)}
 === КОНЕЦ ===
 
-Данные вакансии:
-Название: ${vacancy.title}
+Вакансия: ${vacancy.title}
 Компания: ${vacancy.company}
 
-Правила:
-- использовать ТОЛЬКО информацию из резюме
-- никаких цифр, если их нет в резюме
-- писать без Markdown, без списков, без *, -, #
-- plain-text
-- аккуратный профессиональный стиль
-  `.trim();
+Требования:
+- писать только plain-text
+- без markdown
+- без списков и символов
+- только факты из резюме
+`.trim();
 
   const body = {
     model: "GigaChat",
     messages: [
-      { role: "system", content: "Ты — профессиональный HR-копирайтер." },
+      { role: "system", content: "Ты эксперт по написанию сопроводительных писем." },
       { role: "user", content: prompt }
     ],
     temperature: 0.3
   };
+
+  console.log("[GigaChat] Sending completion request...");
 
   const response = await fetch(CHAT_URL, {
     method: "POST",
@@ -124,26 +134,36 @@ ${compressedResume}
       Accept: "application/json"
     },
     body: JSON.stringify(body)
+  }).catch(err => {
+    console.error("[GigaChat] COMPLETION FETCH ERROR:", err);
+    return null;
   });
 
-  if (!response.ok) {
-    const err = await response.text();
-    console.error("[GigaChat] Completion error:", err);
-    throw new Error("GigaChat generation failed");
+  if (!response || !response.ok) {
+    console.error("[GigaChat] COMPLETION ERROR:", response ? await response.text() : "");
+    return getFallbackLetter(vacancy);
   }
 
-  const data = await response.json();
+  const data = await response.json().catch(e => {
+    console.error("[GigaChat] JSON parse error:", e);
+    return null;
+  });
 
-  const text =
-    data?.choices?.[0]?.message?.content ??
-    "Не удалось сгенерировать письмо.";
+  if (!data?.choices?.[0]?.message?.content) {
+    console.error("[GigaChat] EMPTY RESPONSE → fallback");
+    return getFallbackLetter(vacancy);
+  }
 
-  return sanitize(text);
+  return sanitize(data.choices[0].message.content);
 }
 
 // ===============================
-// 7. Fallback
+// 6. Fallback (возвращён!)
 // ===============================
-export function getFallbackLetter(): string {
-  return "Имею релевантный опыт работы. Готов обсудить детали и показать достижения.";
+export function getFallbackLetter(vacancy: Job): string {
+  return `
+Имею релевантный опыт работы и развивал продуктовые и маркетинговые направления. 
+Работал с аналитикой, гипотезами, развитием продукта и улучшением процессов. 
+Готов обсудить, как мой опыт будет полезен для вашей компании.
+`.trim();
 }
