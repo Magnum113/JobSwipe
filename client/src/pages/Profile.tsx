@@ -4,6 +4,7 @@ import { User, Save, FileText, CheckCircle, RefreshCw, LogIn, LogOut, Check, Ext
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CenteredLoader } from "@/components/ui/loader";
 
 interface ProfileData {
   hhConnected: boolean;
@@ -149,8 +150,8 @@ export default function Profile() {
 
   if (profileLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      <div className="relative h-full">
+        <CenteredLoader message="Загрузка профиля..." />
       </div>
     );
   }

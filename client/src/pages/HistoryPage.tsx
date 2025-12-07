@@ -3,6 +3,7 @@ import { History, Building2, Calendar, FileText, ChevronDown, ChevronUp, CheckCi
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useState, useEffect } from "react";
+import { CenteredLoader } from "@/components/ui/loader";
 import type { Application } from "@shared/schema";
 
 async function fetchApplications(userId: string): Promise<Application[]> {
@@ -139,8 +140,8 @@ export default function HistoryPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      <div className="relative h-full">
+        <CenteredLoader message="Загрузка истории..." />
       </div>
     );
   }

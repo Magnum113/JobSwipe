@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { VacancyCard, VacancyCardRef } from "@/components/VacancyCard";
 import { VacancyFullView } from "@/components/VacancyFullView";
 import { AnimatePresence } from "framer-motion";
-import { X, Heart, RotateCcw, Briefcase, Filter, Search, ChevronDown, Loader2, AlertCircle, LogIn } from "lucide-react";
+import { X, Heart, RotateCcw, Briefcase, Filter, Search, ChevronDown, AlertCircle, LogIn, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useToast } from "@/hooks/use-toast";
+import { incrementPending, decrementPending } from "@/lib/pendingStore";
+import { CenteredLoader } from "@/components/ui/loader";
 import type { HHJob, HHJobsResponse, Resume } from "@shared/schema";
 
 interface ProfessionResponse {
@@ -152,7 +153,6 @@ const EXPERIENCE = [
 
 export default function VacanciesPage() {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
   const [isSwiping, setIsSwiping] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -300,6 +300,9 @@ export default function VacanciesPage() {
       const isAuthenticated = authStatus?.authenticated && userId;
       const resumeContent = resume?.content || "";
       
+      // Increment pending count for badge
+      incrementPending();
+      
       // Fire async request - don't wait for result
       applyAsync({
         userId: isAuthenticated ? userId : null,
@@ -314,16 +317,12 @@ export default function VacanciesPage() {
         resumeText: resumeContent,
         isDemo: !isAuthenticated,
       }).then(() => {
-        // Refresh applications list after queued
+        // Decrement pending count and refresh applications list
+        decrementPending();
         queryClient.invalidateQueries({ queryKey: ["applications"] });
       }).catch((err) => {
         console.error("Failed to queue application:", err);
-      });
-
-      // Show quick toast - no waiting
-      toast({
-        title: isAuthenticated ? "Отклик в очереди" : "Демо-отклик",
-        description: `${currentJob.company} - ${currentJob.title}`,
+        decrementPending();
       });
     }
 
@@ -345,7 +344,7 @@ export default function VacanciesPage() {
     setExpandedVacancy(null);
 
     setTimeout(() => setIsSwiping(false), 300);
-  }, [isSwiping, currentJobs, currentIndex, resume, toast, queryClient, authStatus, userId]);
+  }, [isSwiping, currentJobs, currentIndex, resume, queryClient, authStatus, userId]);
 
   const loadMoreJobs = useCallback(async () => {
     if (!hasMore || isLoadingMore || !appliedFilters) return;
@@ -361,15 +360,10 @@ export default function VacanciesPage() {
       setHasMore(response.hasMore);
     } catch (error) {
       console.error("Failed to load more jobs:", error);
-      toast({
-        title: "Ошибка",
-        description: "Не удалось загрузить ещё вакансии",
-        variant: "destructive",
-      });
     } finally {
       setIsLoadingMore(false);
     }
-  }, [batch, appliedFilters, hasMore, isLoadingMore, toast]);
+  }, [batch, appliedFilters, hasMore, isLoadingMore]);
 
   const triggerSwipe = useCallback(async (direction: "left" | "right") => {
     if (isSwiping || currentJobs.length === 0 || expandedVacancy) return;
@@ -442,11 +436,8 @@ export default function VacanciesPage() {
   // Loading state while checking auth
   if (userId && isAuthLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-500">Проверяем авторизацию...</p>
-        </div>
+      <div className="relative h-full">
+        <CenteredLoader message="Проверяем авторизацию..." />
       </div>
     );
   }
@@ -526,11 +517,8 @@ export default function VacanciesPage() {
 
   if (isSearching && jobs.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-500">Загрузка вакансий с HH.ru...</p>
-        </div>
+      <div className="relative h-full">
+        <CenteredLoader message="Загрузка вакансий с HH.ru..." />
       </div>
     );
   }
