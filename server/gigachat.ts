@@ -39,7 +39,9 @@ async function getAccessToken(): Promise<string> {
     grant_type: "client_credentials"
   });
 
-  console.log("[GigaChat] Requesting new OAuth token...");
+  console.log("[GigaChat] TOKEN REQUEST BODY:", params.toString());
+  console.log("[GigaChat] CLIENT_ID:", GIGACHAT_CLIENT_ID);
+  console.log("[GigaChat] SCOPE:", GIGACHAT_SCOPE);
 
   const response = await fetch(TOKEN_URL, {
     method: "POST",
@@ -49,24 +51,25 @@ async function getAccessToken(): Promise<string> {
     },
     body: params.toString()
   }).catch(e => {
-    console.error("[GigaChat] FETCH ERROR while token request:", e);
+    console.error("[GigaChat] FETCH ERROR:", e);
     throw e;
   });
 
+  const text = await response.text();
+
   if (!response.ok) {
-    console.error("[GigaChat] TOKEN ERROR:", await response.text());
-    throw new Error("OAuth token request failed");
+    console.error("[GigaChat] TOKEN ERROR RESPONSE:", text);
+    throw new Error("OAuth token request failed: " + text);
   }
 
-  const data = await response.json();
+  const data = JSON.parse(text);
 
   cachedToken = data.access_token;
   tokenExpiresAt = now + data.expires_at * 1000;
 
-  console.log("[GigaChat] OAuth token received");
-
   return cachedToken!;
 }
+
 
 // ===============================
 // 3. Sanitize
