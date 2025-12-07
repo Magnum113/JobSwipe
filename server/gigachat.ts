@@ -97,17 +97,21 @@ export async function getAccessToken(): Promise<string | null> {
 // 2. Генерация сопроводительного письма
 // ================================
 export async function generateCoverLetter(resume: string, vacancy: Job): Promise<string> {
-console.log("\n[GIGACHAT DEBUG] Vacancy incoming:");
-console.log("Title:", vacancy.title);
-console.log("Company:", vacancy.company);
-console.log("Salary:", vacancy.salary);
-console.log("Description length:", vacancy.description?.length);
-console.log("Tags:", vacancy.tags);
-
-  console.log("🔥🔥🔥 generateCoverLetter CALLED!");
-  console.log("🔥 Resume length:", resume?.length);
-  console.log("🔥 Resume first 300 chars:", resume?.slice(0, 300));
-  console.log("🔥 Vacancy:", vacancy);
+  // =================== ПОДРОБНОЕ ЛОГИРОВАНИЕ РЕЗЮМЕ ===================
+  console.log("\n=================== GIGACHAT RESUME DEBUG ===================");
+  console.log("🔥 GIGACHAT RESUME LENGTH:", resume ? resume.length : 0);
+  console.log("🔥 GIGACHAT RESUME TEXT (FULL):");
+  console.log("------------------------------------------------------------");
+  console.log(resume || "(EMPTY RESUME FOR GIGACHAT)");
+  console.log("------------------------------------------------------------");
+  console.log("🔥 GIGACHAT VACANCY INFO:", {
+    id: vacancy.id,
+    title: vacancy.title,
+    company: vacancy.company,
+    salary: vacancy.salary,
+    descriptionLength: vacancy.description ? vacancy.description.length : 0,
+  });
+  console.log("============================================================\n");
 
   const token = await getAccessToken();
   if (!token) {
@@ -115,7 +119,7 @@ console.log("Tags:", vacancy.tags);
     return fallbackLetter(vacancy);
   }
 
-  // ------- НОВЫЙ ЖЁСТКИЙ ПРОМПТ -------
+  // ------- ПРОМПТ -------
   const prompt = `
 Ты пишешь сопроводительное письмо строго на основе резюме.
 
@@ -140,6 +144,15 @@ ${resume}
 
 Выведи только текст письма.
 `.trim();
+
+  // =================== ЛОГИРОВАНИЕ ФИНАЛЬНОГО ПРОМПТА ===================
+  console.log("\n=================== GIGACHAT FINAL PROMPT ===================");
+  console.log("🔥 PROMPT LENGTH:", prompt.length);
+  console.log("🔥 PROMPT TEXT (FULL):");
+  console.log("------------------------------------------------------------");
+  console.log(prompt);
+  console.log("------------------------------------------------------------");
+  console.log("============================================================\n");
 
   try {
     const response = await fetch(CHAT_URL, {
