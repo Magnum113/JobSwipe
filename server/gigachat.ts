@@ -70,6 +70,11 @@ export async function getAccessToken(): Promise<string | null> {
 // 2. Генерация сопроводительного письма
 // ================================
 export async function generateCoverLetter(resume: string, vacancy: Job): Promise<string> {
+  console.log("🔥🔥🔥 generateCoverLetter CALLED!");
+  console.log("🔥 Resume length:", resume?.length);
+  console.log("🔥 Resume first 300 chars:", resume?.slice(0, 300));
+  console.log("🔥 Vacancy:", vacancy);
+
   const token = await getAccessToken();
   if (!token) {
     console.log("[GigaChat] TOKEN FAILURE → fallback letter used");
