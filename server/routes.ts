@@ -678,6 +678,12 @@ export async function registerRoutes(
   app.post("/api/cover-letter/generate", async (req, res) => {
     try {
       const validated = coverLetterRequestSchema.parse(req.body);
+      console.log("\n========== DEBUG RESUME PAYLOAD ==========");
+       console.log("RESUME LENGTH:", validated.resume?.length);
+       console.log("RESUME FIRST 500 CHARS:");
+       console.log(validated.resume?.slice(0, 500));
+       console.log("VACANCY:", validated.vacancy);
+    console.log("==========================================\n");
       
       const coverLetter = await generateCoverLetter(
         validated.resume, 
