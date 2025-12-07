@@ -1,0 +1,90 @@
+Симптомы бага:
+1. Раньше вакансии отображались нормально.
+2. Потом я доработал логику, чтобы в промпт ИИ (GigaChat) передавалось полное описание вакансии, а в карточке оставалось короткое. После этого:
+   - в UI карточки вакансий пропали;
+   - в логах сервера при запросе `/api/hh/jobs` я вижу такое:
+     `[HH API] Batch 1: got 30 jobs, total found: ...`
+     `[HH API] Filtered swiped vacancies: 30 -> 30 (removed 0)`
+     и ответ:
+     `GET /api/hh/jobs 200 :: {"jobs":[{},{},{},...],"hasMore":true,"total":..., "batch":1}`
+     То есть массив `jobs` есть, но каждый объект пустой `{}`.
+3. Также был лог `"Vacancy ID is required"` при попытке записать свайп, т.е. похоже, что фронт получает вакансии без `id`.
+
+Что я менял (мог накосячить здесь):
+- Функцию `adaptHHVacancy` в `server/routes.ts` (или рядом) — я хотел добавить поля `descriptionShort` и `descriptionFull`. Сейчас она выглядит примерно так:
+
+```ts
+function adaptHHVacancy(vacancy: HHVacancy): HHJob {
+  const description = vacancy.snippet.responsibility || vacancy.snippet.requirement || "Описание отсутствует";
+  const cleanDescription = description.replace(/<[^>]*>/g, "");
+  
+  let logoUrl = vacancy.employer.logo_urls?.["240"] || vacancy.employer.logo_urls?.original || undefined;
+  if (logoUrl && logoUrl.includes("employer-logo-round")) {
+    logoUrl = logoUrl.replace("employer-logo-round", "employer-logo");
+  }
+  
+  return {
+    id: vacancy.id,
+    title: vacancy.name,
+    company: vacancy.employer.name,
+    salary: formatSalary(vacancy.salary),
+    description: cleanDescription,
+    location: vacancy.area.name,
+    employmentType: mapEmploymentType(vacancy.employment, vacancy.schedule),
+    tags: vacancy.professional_roles.map(role => role.name).slice(0, 5),
+    url: vacancy.alternate_url,
+    logoUrl,
+  };
+}
+```
+
+- Типы `HHJob` и `HHJobsResponse` в `shared/schema.ts` (или где они объявлены).
+- В `client` я менял файл с логикой свайпов по вакансиям: компонент `VacanciesPage` (файл вроде `client/src/pages/VacanciesPage.tsx` или похожее название). Там есть функция `applyAsync` и участок:
+
+```ts
+applyAsync({
+  userId: isAuthenticated ? userId : null,
+  vacancyId: currentJob.id,
+  vacancyData: {
+    title: currentJob.title,
+    company: currentJob.company,
+    salary: currentJob.salary,
+    description: currentJob.descriptionFull || currentJob.description || "",
+    tags: currentJob.tags || [],
+  },
+  resumeText: resumeContent,
+  isDemo: !isAuthenticated,
+})
+```
+
+Цель фичи:
+- В карточке (`VacancyCard`) показывать КОРОТКОЕ описание (как раньше, через `snippet` из HH).
+- В развёрнутом просмотре вакансии (`VacancyFullView`) и в AI-промпте (GigaChat, `server/gigachat.ts`) использовать ПОЛНОЕ описание вакансии, если оно есть у HH, либо хотя бы расширенный текст.
+- При этом API `/api/hh/jobs` должен возвращать корректные объекты `HHJob` c полями `id`, `title`, `company`, `salary`, `description` (или `descriptionShort` + `descriptionFull`), `location`, `employmentType`, `tags`, `url`, `logoUrl`.
+
+Сейчас проблема в том, что на стороне сервера в логах response body по `/api/hh/jobs` выглядит как `{"jobs":[{}, {}, ...]}`, и из-за этого фронт не может отрисовать вакансии и свайпать их.
+
+**Задача:**
+1. Пройдись по всему реплу и найди точную причину, почему в ответе `/api/hh/jobs` массив `jobs` состоит из пустых объектов `{}`:
+   - проверь тип `HHJob` в `shared/schema`;
+   - проверь функцию `adaptHHVacancy`;
+   - проверь, не происходит ли где-то преобразование/сериализация, из-за которой теряются поля (например, `drizzle`, `zod`, кастомные мапперы и т.д.).
+2. Исправь код так, чтобы:
+   - `/api/hh/jobs` снова возвращал полноценные объекты вакансий, а не `{}`;
+   - поля `id`, `title`, `company`, `salary`, `location`, `employmentType`, `tags`, `url`, `logoUrl` точно были в ответе;
+   - было два уровня описания:
+     - короткое — для карточки;
+     - полное — для развёрнутого просмотра и для AI-промпта.
+   Реализовать это можно, например, так (если посчитаешь уместным):
+   - в `HHJob` добавить поля `descriptionShort` и `descriptionFull` (а старое `description` либо оставить как alias к `descriptionShort`, либо аккуратно заменить везде);
+   - в `adaptHHVacancy` возвращать ОДИН объект, где:
+     - `descriptionShort` берётся из `vacancy.snippet.responsibility || vacancy.snippet.requirement`;
+     - `descriptionFull` — из полной вакансии, если она доступна, иначе `descriptionShort`.
+3. Убедись, что:
+   - фронтенд (VacanciesPage, VacancyCard, VacancyFullView) компилируется без ошибок TypeScript;
+   - карточки снова отображаются;
+   - свайп вправо отправляет корректный `vacancyId` и `vacancyData` на `/api/apply/async`;
+   - в логах Express по `/api/hh/jobs` JSON уже с нормальными объектами, а не `{}`.
+4. Покажи мне диффы/правки по всем затронутым файлам и кратко опиши, в чём был баг и как ты его починил.
+
+Важно: не надо переписывать всё приложение. Почини именно баг с пустыми объектами в `jobs` и аккуратно доделай фичу с коротким/полным описанием вакансии

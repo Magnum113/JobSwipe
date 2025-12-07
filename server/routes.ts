@@ -423,7 +423,7 @@ export async function registerRoutes(
       const totalFound = data.found as number;
       const pages = data.pages as number;
       
-      let jobs = items.map(adaptHHVacancy);
+      let jobs = await Promise.all(items.map(adaptHHVacancy));
       
       // Filter out already-swiped vacancies for authenticated users
       if (userId) {
