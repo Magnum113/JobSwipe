@@ -1,11 +1,16 @@
 import path from "path";
-import { fileURLToPath } from "url";
+import fs from "fs";
 
-const __dirnameResolved = typeof __dirname === "undefined"
-  ? path.dirname(fileURLToPath(import.meta.url))
-  : __dirname;
+// Определяем путь к сертификатам
+function getCertPath(): string {
+  const prodPath = path.join(process.cwd(), "dist/certs/russian_trusted_root_ca_pem.crt");
+  if (fs.existsSync(prodPath)) return prodPath;
+  const devPath = path.join(process.cwd(), "server/certs/russian_trusted_root_ca_pem.crt");
+  if (fs.existsSync(devPath)) return devPath;
+  return prodPath;
+}
 
-process.env.NODE_EXTRA_CA_CERTS = path.resolve(__dirnameResolved, "certs/russian_trusted_root_ca_pem.crt");
+process.env.NODE_EXTRA_CA_CERTS = getCertPath();
 import "./setupCerts";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";

@@ -6,20 +6,32 @@ import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { Agent } from "undici";
 
-const __dirnameResolved = typeof __dirname === "undefined"
-  ? path.dirname(fileURLToPath(import.meta.url))
-  : __dirname;
-
 const TOKEN_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth";
 const CHAT_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions";
+
+// Определяем путь к сертификатам (работает и в dev и в prod)
+function getCertsDir(): string {
+  // В production сертификаты лежат в dist/certs
+  const prodPath = path.join(process.cwd(), "dist/certs");
+  if (fs.existsSync(prodPath)) {
+    return prodPath;
+  }
+  // В dev - в server/certs
+  const devPath = path.join(process.cwd(), "server/certs");
+  if (fs.existsSync(devPath)) {
+    return devPath;
+  }
+  return prodPath; // fallback
+}
 
 // ✓ Загружаем сертификаты Минцифры (с fallback если файлы не найдены)
 let caCerts: string[] = [];
 let gigaChatAgent: Agent | undefined;
 
 try {
-  const certRootPath = path.resolve(__dirnameResolved, "certs/russian_trusted_root_ca_pem.crt");
-  const certSubPath = path.resolve(__dirnameResolved, "certs/russian_trusted_sub_ca_pem.crt");
+  const certsDir = getCertsDir();
+  const certRootPath = path.join(certsDir, "russian_trusted_root_ca_pem.crt");
+  const certSubPath = path.join(certsDir, "russian_trusted_sub_ca_pem.crt");
   
   if (fs.existsSync(certRootPath) && fs.existsSync(certSubPath)) {
     caCerts = [
