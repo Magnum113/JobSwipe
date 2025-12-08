@@ -37,7 +37,7 @@ interface HHApplyResult {
 
 interface HHFilters {
   text: string;
-  area: string;
+  areas: string[];
   employment: string;
   schedule: string;
   experience: string;
