@@ -9,6 +9,18 @@ import { Agent } from "undici";
 const TOKEN_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth";
 const CHAT_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions";
 
+// ================================
+// ХЕЛПЕР ДЛЯ ДЛИННЫХ ЛОГОВ
+// ================================
+function logLong(label: string, text: string | null | undefined, chunkSize = 500) {
+  const safe = text || "";
+  console.log(`\n===== ${label} START (length ${safe.length}) =====`);
+  for (let i = 0; i < safe.length; i += chunkSize) {
+    console.log(safe.substring(i, i + chunkSize));
+  }
+  console.log(`===== ${label} END =====\n`);
+}
+
 // Определяем путь к сертификатам (работает и в dev и в prod)
 function getCertsDir(): string {
   // В production сертификаты лежат в dist/certs
@@ -100,10 +112,7 @@ export async function generateCoverLetter(resume: string, vacancy: Job): Promise
   // =================== ПОДРОБНОЕ ЛОГИРОВАНИЕ РЕЗЮМЕ И ВАКАНСИИ ===================
   console.log("\n=================== GIGACHAT RESUME DEBUG ===================");
   console.log("🔥 GIGACHAT RESUME LENGTH:", resume ? resume.length : 0);
-  console.log("🔥 GIGACHAT RESUME TEXT (FULL):");
-  console.log("------------------------------------------------------------");
-  console.log(resume || "(EMPTY RESUME FOR GIGACHAT)");
-  console.log("------------------------------------------------------------");
+  logLong("GIGACHAT RESUME TEXT (FULL)", resume || "(EMPTY RESUME FOR GIGACHAT)");
   console.log("🔥 GIGACHAT VACANCY RAW:", {
     id: vacancy.id,
     title: vacancy.title,
@@ -137,7 +146,6 @@ ${((vacancy as any).tags && (vacancy as any).tags.length)
 `.trim();
 
   // ------- ПРОМПТ: анализируем ВАКАНСИЮ + РЕЗЮМЕ и вытаскиваем только матчинг -------
-
   const prompt = `
 Ты пишешь короткое, содержательное сопроводительное письмо под КОНКРЕТНУЮ вакансию, строго опираясь на резюме кандидата.
 
@@ -184,11 +192,15 @@ ${resume}
   // =================== ЛОГИРОВАНИЕ ФИНАЛЬНОГО ПРОМПТА ===================
   console.log("\n=================== GIGACHAT FINAL PROMPT ===================");
   console.log("🔥 PROMPT LENGTH:", prompt.length);
-  console.log("🔥 PROMPT TEXT (FULL):");
-  console.log("------------------------------------------------------------");
-  console.log(prompt);
-  console.log("------------------------------------------------------------");
+  logLong("GIGACHAT FINAL PROMPT", prompt);
   console.log("============================================================\n");
+
+  // (опционально) сохраняем последний промпт в файл для дебага
+  try {
+    fs.writeFileSync("gigachat_prompt_latest.txt", prompt, "utf8");
+  } catch (e) {
+    console.warn("[GigaChat] Failed to write prompt file:", e);
+  }
 
   try {
     const response = await fetch(CHAT_URL, {
@@ -236,10 +248,10 @@ function sanitize(text: string): string {
 // ================================
 // 4. Fallback письмо
 // ================================
-function fallbackLetter(vacancy: Job): string {
+function fallbackLetter(_vacancy: Job): string {
   return `
 Имею релевантный опыт работы и занимался развитием маркетинговых и продуктовых направлений. Работал с аналитикой, гипотезами, процессами и улучшением метрик.
 
-Готов обсудить, как мой опыт может быть полезен вашей компании.
+Мой опыт и навыки позволяют закрывать задачи по развитию продукта и маркетинговых направлений.
 `.trim();
 }
