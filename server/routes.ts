@@ -138,6 +138,13 @@ async function adaptHHVacancy(vacancy: HHVacancy): Promise<HHJob> {
     ? vacancy.professional_roles.map(r => r.name).filter(Boolean)
     : [];
   const tags = (keySkills.length > 0 ? keySkills : roles).slice(0, 6);
+  
+  // Debug: log which source was used for tags
+  if (keySkills.length > 0) {
+    console.log(`[Tags] Vacancy ${vacancy.id}: using ${keySkills.length} key_skills`);
+  } else {
+    console.log(`[Tags] Vacancy ${vacancy.id}: no key_skills, using ${roles.length} professional_roles`);
+  }
 
   return {
     id: vacancy.id,
