@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { getLastGigachatPrompt } from "./gigachat"; // путь подкорректируй под свою структуру
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
@@ -1392,6 +1393,17 @@ coverLetter = await generateCoverLetter(resumeTextFinal, vacancy);
       console.error("[HH Applications] Get error:", error);
       res.status(500).json({ error: "Failed to get applications" });
     }
+  });
+  app.get("/api/debug/last-prompt", (_req, res) => {
+    const prompt = getLastGigachatPrompt();
+
+    if (!prompt) {
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      return res.status(200).send("NO PROMPT YET");
+    }
+
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    return res.status(200).send(prompt);
   });
 
   return httpServer;

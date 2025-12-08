@@ -20,6 +20,16 @@ function logLong(label: string, text: string | null | undefined, chunkSize = 500
   console.log(`===== ${label} END =====\n`);
 }
 
+// ================================
+// ГЛОБАЛЬНО ХРАНИМ ПОСЛЕДНИЙ ПРОМПТ ДЛЯ DEBUG-ЭНДПОИНТА
+// ================================
+let LAST_DEBUG_PROMPT = "";
+
+// экспортируем геттер, чтобы routes мог забрать последний промпт
+export function getLastGigachatPrompt(): string {
+  return LAST_DEBUG_PROMPT;
+}
+
 // Определяем путь к сертификатам (работает и в dev и в prod)
 function getCertsDir(): string {
   // В production сертификаты лежат в dist/certs
@@ -43,14 +53,14 @@ try {
   const certsDir = getCertsDir();
   const certRootPath = path.join(certsDir, "russian_trusted_root_ca_pem.crt");
   const certSubPath = path.join(certsDir, "russian_trusted_sub_ca_pem.crt");
-
+  
   if (fs.existsSync(certRootPath) && fs.existsSync(certSubPath)) {
     caCerts = [
       fs.readFileSync(certRootPath, "utf8"),
-      fs.readFileSync(certSubPath, "utf8"),
+      fs.readFileSync(certSubPath, "utf8")
     ];
     gigaChatAgent = new Agent({
-      connect: { ca: caCerts },
+      connect: { ca: caCerts }
     });
     console.log("[GigaChat] Certificates loaded successfully");
   } else {
@@ -68,14 +78,14 @@ export async function getAccessToken(): Promise<string | null> {
     console.warn("[GigaChat] Agent not initialized, certificates may be missing");
     return null;
   }
-
+  
   try {
     const authKey = process.env.GIGACHAT_AUTH_KEY;
     if (!authKey) {
       console.warn("[GigaChat] GIGACHAT_AUTH_KEY not set");
       return null;
     }
-
+    
     const scope = process.env.GIGACHAT_SCOPE || "GIGACHAT_API_PERS";
 
     const response = await fetch(TOKEN_URL, {
@@ -87,7 +97,7 @@ export async function getAccessToken(): Promise<string | null> {
         Authorization: `Basic ${authKey}`,
       },
       body: new URLSearchParams({ scope }).toString(),
-      dispatcher: gigaChatAgent,
+      dispatcher: gigaChatAgent
     } as any);
 
     if (!response.ok) {
@@ -96,7 +106,7 @@ export async function getAccessToken(): Promise<string | null> {
       return null;
     }
 
-    const data = (await response.json()) as any;
+    const data = await response.json() as any;
     return data.access_token || null;
   } catch (err) {
     console.error("[GigaChat] TOKEN FAILURE:", err);
@@ -138,9 +148,9 @@ export async function generateCoverLetter(resume: string, vacancy: Job): Promise
 Краткое описание / обязанности:
 ${vacancy.description || "—"}
 Ключевые теги/направления:
-${(vacancy as any).tags && (vacancy as any).tags.length
-    ? (vacancy as any).tags.join(", ")
-    : "—"}
+${((vacancy as any).tags && (vacancy as any).tags.length)
+  ? (vacancy as any).tags.join(", ")
+  : "—"}
 === ВАКАНСИЯ КОНЕЦ ===
 `.trim();
 
@@ -188,13 +198,16 @@ ${resume}
 Выведи только текст сопроводительного письма, без пояснений, без заголовков и без лишних комментариев.
 `.trim();
 
+  // сохраняем последний промпт в глобалку для debug-эндпоинта
+  LAST_DEBUG_PROMPT = prompt;
+
   // =================== ЛОГИРОВАНИЕ ФИНАЛЬНОГО ПРОМПТА ===================
   console.log("\n=================== GIGACHAT FINAL PROMPT ===================");
   console.log("🔥 PROMPT LENGTH:", prompt.length);
   logLong("GIGACHAT FINAL PROMPT", prompt);
   console.log("============================================================\n");
 
-  // (опционально) сохраняем последний промпт в файл для дебага
+  // (опционально) сохраняем последний промпт в файл для локального дебага
   try {
     fs.writeFileSync("gigachat_prompt_latest.txt", prompt, "utf8");
   } catch (e) {
@@ -210,12 +223,14 @@ ${resume}
       },
       body: JSON.stringify({
         model: "GigaChat",
-        messages: [{ role: "user", content: prompt }],
+        messages: [
+          { role: "user", content: prompt }
+        ],
       }),
-      dispatcher: gigaChatAgent,
+      dispatcher: gigaChatAgent
     } as any);
 
-    const data = (await response.json()) as any;
+    const data = await response.json() as any;
 
     if (!response.ok) {
       console.error("[GigaChat] CHAT ERROR:", data);
