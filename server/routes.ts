@@ -110,13 +110,18 @@ async function adaptHHVacancy(vacancy: HHVacancy): Promise<HHJob> {
   const short = vacancy.snippet.responsibility || vacancy.snippet.requirement || "Описание отсутствует";
   const shortClean = short.replace(/<[^>]*>/g, "");
 
-  // 2. Полное описание — загружаем отдельно
+  // 2. Полное описание и key_skills — загружаем отдельно
   let fullClean = "";
+  let keySkills: string[] = [];
   try {
     const resp = await fetch(`https://api.hh.ru/vacancies/${vacancy.id}`);
     if (resp.ok) {
       const full = await resp.json();
       fullClean = (full.description || "").replace(/<[^>]*>/g, "");
+      // Extract key_skills from full vacancy data
+      keySkills = Array.isArray(full.key_skills)
+        ? full.key_skills.map((s: any) => s.name).filter(Boolean)
+        : [];
     }
   } catch (e) {
     console.log("Failed to load full vacancy description:", e);
@@ -128,6 +133,12 @@ async function adaptHHVacancy(vacancy: HHVacancy): Promise<HHJob> {
     logoUrl = logoUrl.replace("employer-logo-round", "employer-logo");
   }
 
+  // Tags: prefer key_skills, fallback to professional_roles
+  const roles = Array.isArray(vacancy.professional_roles)
+    ? vacancy.professional_roles.map(r => r.name).filter(Boolean)
+    : [];
+  const tags = (keySkills.length > 0 ? keySkills : roles).slice(0, 6);
+
   return {
     id: vacancy.id,
     title: vacancy.name,
@@ -137,7 +148,7 @@ async function adaptHHVacancy(vacancy: HHVacancy): Promise<HHJob> {
     descriptionFull: fullClean,      // ← ПОЛНОЕ описание (это важно!)
     location: vacancy.area.name,
     employmentType: mapEmploymentType(vacancy.employment, vacancy.schedule),
-    tags: vacancy.professional_roles.map(role => role.name).slice(0, 5),
+    tags,
     url: vacancy.alternate_url,
     logoUrl,
   };

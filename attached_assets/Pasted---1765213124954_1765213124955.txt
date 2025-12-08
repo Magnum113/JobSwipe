@@ -1,0 +1,97 @@
+Задача:
+В карточке вакансии внизу сейчас показываются теги вроде «Программист, разработчик» (они приходят из professional_roles). Нужно вместо этого выводить key skills вакансии с HH.ru, каждый скилл как отдельный тег/чип.
+
+Сделай все изменения сам по шагам.
+
+1. Бэкенд: брать теги из key_skills
+
+Найди функцию адаптации вакансии HH.ru в бэкенде.
+Файл: server/routes.ts (уже есть функция adaptHHVacancy(vacancy: HHVacancy): Promise<HHJob>).
+Внутри неё сейчас tags формируются так:
+
+tags: vacancy.professional_roles.map(role => role.name).slice(0, 5),
+
+
+В этой же функции уже загружается полное описание вакансии по https://api.hh.ru/vacancies/{id}.
+Найди переменную с полным JSON вакансии (что-то вроде const full = await resp.json(); — сейчас из неё берётся только full.description в fullClean).
+
+Доработай adaptHHVacancy так, чтобы:
+
+Из full.key_skills достать массив имён навыков:
+const skills = (full.key_skills || []).map((s: any) => s.name).filter(Boolean);
+
+В возвращаемом объекте HHJob поле tags заполнялось в приоритете key_skills:
+
+если skills.length > 0, использовать первые 6–8 скиллов;
+
+если skills пустой, fallback к vacancy.professional_roles.map(role => role.name) как сейчас.
+
+Пример логики:
+
+const skills =
+  Array.isArray(full.key_skills)
+    ? full.key_skills.map((s: any) => s.name).filter(Boolean)
+    : [];
+
+const roles =
+  Array.isArray(vacancy.professional_roles)
+    ? vacancy.professional_roles.map(r => r.name).filter(Boolean)
+    : [];
+
+const tags = (skills.length > 0 ? skills : roles).slice(0, 6);
+
+
+И уже в return:
+
+tags,
+
+
+Убедись, что тип HHJob (в @shared/schema) уже поддерживает tags: string[] и его менять не нужно.
+
+2. Фронтенд: карточка вакансии должна рисовать эти теги
+
+Найди React-компонент карточки вакансии, в которой внизу выводятся теги «Программист, разработчик».
+Это, скорее всего, что-то вроде JobCard.tsx, VacancyCard.tsx или похожее в /client/src, /app/components или /src/components.
+
+Ориентиры для поиска:
+
+текст Нажми, чтобы узнать больше тоже есть в этой карточке;
+
+в JSX есть рендер чего-то вроде job.tags.map(...) или вывод professional_roles.
+
+Измени рендеринг тегов так, чтобы:
+
+он проходился по job.tags (или аналогичному полю, которое приходит с бэкенда);
+
+каждый элемент массива рендерился как отдельный тег/бейдж/чип;
+
+желательно ограничить количество видимых тегов 4–6.
+
+Пример JSX (адаптируй под текущую верстку и стили):
+
+{job.tags && job.tags.length > 0 && (
+  <div className="tags-row">
+    {job.tags.slice(0, 6).map((tag) => (
+      <span key={tag} className="job-tag-chip">
+        {tag}
+      </span>
+    ))}
+  </div>
+)}
+
+
+Если сейчас теги берутся не из job.tags, а из других полей (professional_roles и т.п.), переведи их на использование job.tags.
+
+3. Общие требования
+
+Сохрани существующий дизайн карточки: расположение тегов и стили должны выглядеть так же, только текст внутри тегов меняется на скиллы.
+
+Не ломай другие части API и типы, не удаляй существующие поля — только перенастрой источник данных для тегов.
+
+После изменений:
+
+запусти проверку TypeScript / линтера;
+
+собери проект;
+
+убедись, что карточки вакансий загружаются без ошибок, и внизу отображаются key skills, взятые из HH (full.key_skills), а если их нет — старые роли.
