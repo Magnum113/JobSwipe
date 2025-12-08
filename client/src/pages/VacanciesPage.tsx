@@ -207,6 +207,34 @@ export default function VacanciesPage() {
   const [allAreas, setAllAreas] = useState<AreaOption[]>(STATIC_AREAS);
   const [areaSearch, setAreaSearch] = useState("");
   
+  const [appliedFilters, setAppliedFilters] = useState<HHFilters | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+
+  const { data: resume } = useQuery({
+    queryKey: ["resume"],
+    queryFn: fetchResume,
+  });
+
+  const executeSearch = useCallback(async (searchFilters: HHFilters) => {
+    setIsSearching(true);
+    try {
+      const currentUserId = localStorage.getItem("userId");
+      const response = await fetchHHJobs(searchFilters, 1, currentUserId);
+      setJobs(response.jobs);
+      setHasMore(response.hasMore);
+      setBatch(1);
+      setCurrentIndex(0);
+      setHistory([]);
+      setSwipedIds(new Set());
+      setAppliedFilters(searchFilters);
+    } catch (error) {
+      console.error("Search failed:", error);
+    } finally {
+      setIsSearching(false);
+    }
+  }, []);
+  
   // Load all areas from HH API once
   useEffect(() => {
     async function loadAreas() {
@@ -255,34 +283,6 @@ export default function VacanciesPage() {
   const filteredAreas = allAreas.filter(a =>
     a.label.toLowerCase().includes(areaSearch.toLowerCase())
   );
-  
-  const [appliedFilters, setAppliedFilters] = useState<HHFilters | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
-  const [initialLoadDone, setInitialLoadDone] = useState(false);
-
-  const { data: resume } = useQuery({
-    queryKey: ["resume"],
-    queryFn: fetchResume,
-  });
-
-  const executeSearch = useCallback(async (searchFilters: HHFilters) => {
-    setIsSearching(true);
-    try {
-      const currentUserId = localStorage.getItem("userId");
-      const response = await fetchHHJobs(searchFilters, 1, currentUserId);
-      setJobs(response.jobs);
-      setHasMore(response.hasMore);
-      setBatch(1);
-      setCurrentIndex(0);
-      setHistory([]);
-      setSwipedIds(new Set());
-      setAppliedFilters(searchFilters);
-    } catch (error) {
-      console.error("Search failed:", error);
-    } finally {
-      setIsSearching(false);
-    }
-  }, []);
 
   // Track the last used profession to detect changes
   const lastProfessionRef = useRef<string | null>(null);
