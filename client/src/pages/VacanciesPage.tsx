@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { VacancyCard, VacancyCardRef } from "@/components/VacancyCard";
 import { VacancyFullView } from "@/components/VacancyFullView";
 import { AnimatePresence } from "framer-motion";
@@ -280,9 +280,24 @@ export default function VacanciesPage() {
     });
   }, [executeSearch]);
 
-  const filteredAreas = allAreas.filter(a =>
-    a.label.toLowerCase().includes(areaSearch.toLowerCase())
-  );
+  // Optimize: limit displayed areas to prevent rendering 1000+ items
+  const displayedAreas = useMemo(() => {
+    const searchLower = areaSearch.toLowerCase().trim();
+    
+    // If user is searching, filter and show matches (limited to 100)
+    if (searchLower) {
+      return allAreas
+        .filter(a => a.label.toLowerCase().includes(searchLower))
+        .slice(0, 100);
+    }
+    
+    // No search - show selected areas first, then popular regions (max 30 total)
+    const selectedSet = new Set(filters.areas);
+    const selected = allAreas.filter(a => selectedSet.has(a.value));
+    const unselected = allAreas.filter(a => !selectedSet.has(a.value)).slice(0, 30 - selected.length);
+    
+    return [...selected, ...unselected];
+  }, [allAreas, areaSearch, filters.areas]);
 
   // Track the last used profession to detect changes
   const lastProfessionRef = useRef<string | null>(null);
@@ -662,7 +677,7 @@ export default function VacanciesPage() {
                       className="mb-2 h-9 text-sm"
                     />
                     <div className="max-h-60 overflow-y-auto space-y-1 pr-1">
-                      {filteredAreas.map(area => {
+                      {displayedAreas.map(area => {
                         const checked = filters.areas.includes(area.value);
                         return (
                           <label
@@ -677,6 +692,11 @@ export default function VacanciesPage() {
                           </label>
                         );
                       })}
+                      {!areaSearch && allAreas.length > 30 && (
+                        <p className="text-xs text-gray-400 text-center py-2">
+                          Введите название для поиска среди {allAreas.length} регионов
+                        </p>
+                      )}
                     </div>
                   </PopoverContent>
                 </Popover>
