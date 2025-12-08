@@ -21,6 +21,11 @@ import {
 
 const BATCH_SIZE = 30;
 
+// HH Areas cache
+let hhAreasCache: { id: string; name: string }[] | null = null;
+let hhAreasCacheUpdatedAt: number | null = null;
+const HH_AREAS_TTL_MS = 1000 * 60 * 60; // 1 hour
+
 // Extract profession from resume title or experience
 function extractProfession(title: string | null, contentJson: any): string {
   // First try the resume title
@@ -138,206 +143,6 @@ async function adaptHHVacancy(vacancy: HHVacancy): Promise<HHJob> {
   };
 }
 
-const SEED_JOBS = [
-  {
-    title: "Product Marketing Manager – Marketplace",
-    company: "05.ru",
-    salary: "150–200k",
-    description: "Оптимизация воронки, аналитика продаж, GA4, CRM. Мы ищем человека, который сможет вывести наш маркетплейс на новый уровень.",
-    tags: ["Marketing", "Analytics", "Growth"],
-    employmentType: "full-time",
-    location: "Москва"
-  },
-  {
-    title: "Data Analyst – Retail & eCommerce",
-    company: "X5 Tech",
-    salary: "200–260k",
-    description: "SQL, Python, ClickHouse, построение витрин. Работа с большими данными и влияние на принятие продуктовых решений.",
-    tags: ["Data", "SQL", "Python"],
-    employmentType: "hybrid",
-    location: "Москва"
-  },
-  {
-    title: "Product Manager – Digital Banking",
-    company: "T-Bank",
-    salary: "230–300k",
-    description: "Разработка мобильных фич, A/B тесты, CJM. Лидирование продуктовой команды и развитие мобильного приложения банка.",
-    tags: ["Product", "Fintech", "Mobile"],
-    employmentType: "hybrid",
-    location: "Москва"
-  },
-  {
-    title: "Frontend Developer – React Core",
-    company: "Yandex",
-    salary: "250–350k",
-    description: "Разработка сложных интерфейсов, оптимизация производительности, архитектура фронтенда. Стек: React, TypeScript, Effector.",
-    tags: ["Frontend", "React", "TypeScript"],
-    employmentType: "full-time",
-    location: "Москва"
-  },
-  {
-    title: "UX/UI Designer – Design System",
-    company: "Avito",
-    salary: "180–240k",
-    description: "Развитие дизайн-системы, создание компонентов, работа над консистентностью интерфейсов всего продукта.",
-    tags: ["Design", "Figma", "UI/UX"],
-    employmentType: "hybrid",
-    location: "Санкт-Петербург"
-  },
-  {
-    title: "Backend Engineer – High Load Systems",
-    company: "Ozon",
-    salary: "280–380k",
-    description: "Разработка микросервисов на Go, работа с Kubernetes, оптимизация производительности высоконагруженных систем.",
-    tags: ["Backend", "Go", "Microservices"],
-    employmentType: "full-time",
-    location: "Москва"
-  },
-  {
-    title: "ML Engineer – Recommender Systems",
-    company: "VK",
-    salary: "300–400k",
-    description: "Построение рекомендательных систем, работа с большими данными, A/B тестирование ML моделей в продакшене.",
-    tags: ["ML", "Python", "Recommendations"],
-    employmentType: "full-time",
-    location: "Санкт-Петербург"
-  },
-  {
-    title: "DevOps Engineer – Cloud Infrastructure",
-    company: "Yandex Cloud",
-    salary: "220–300k",
-    description: "Управление облачной инфраструктурой, автоматизация CI/CD, мониторинг и обеспечение отказоустойчивости.",
-    tags: ["DevOps", "AWS", "Kubernetes"],
-    employmentType: "remote",
-    location: "Удалённо"
-  },
-  {
-    title: "Senior iOS Developer",
-    company: "Сбер",
-    salary: "280–350k",
-    description: "Разработка мобильного приложения СберБанк Онлайн. Swift, SwiftUI, CI/CD, работа в крупной продуктовой команде.",
-    tags: ["iOS", "Swift", "Mobile"],
-    employmentType: "full-time",
-    location: "Москва"
-  },
-  {
-    title: "Business Analyst – Fintech",
-    company: "Тинькофф",
-    salary: "180–250k",
-    description: "Анализ бизнес-процессов, написание ТЗ, работа с продуктовыми командами. Опыт в финтехе приветствуется.",
-    tags: ["Business Analysis", "Fintech", "Product"],
-    employmentType: "hybrid",
-    location: "Москва"
-  },
-  {
-    title: "QA Engineer – Automation",
-    company: "Wildberries",
-    salary: "200–280k",
-    description: "Автоматизация тестирования, Selenium, Python, CI/CD интеграция. Большой e-commerce проект.",
-    tags: ["QA", "Automation", "Python"],
-    employmentType: "remote",
-    location: "Удалённо"
-  },
-  {
-    title: "System Administrator – Linux",
-    company: "Mail.ru Group",
-    salary: "150–220k",
-    description: "Администрирование Linux серверов, мониторинг, автоматизация. Работа с высоконагруженной инфраструктурой.",
-    tags: ["Linux", "DevOps", "Infrastructure"],
-    employmentType: "full-time",
-    location: "Москва"
-  },
-  {
-    title: "Product Owner – Mobile App",
-    company: "Yandex",
-    salary: "250–320k",
-    description: "Развитие мобильного приложения, постановка задач команде, аналитика, UX-гипотезы.",
-    tags: ["Product", "Mobile", "Analytics"],
-    employmentType: "hybrid",
-    location: "Москва"
-  },
-  {
-    title: "Performance Marketing Manager",
-    company: "Ozon",
-    salary: "180–240k",
-    description: "Управление рекламными кампаниями, оптимизация CPA, аналитика каналов, работа с креативами.",
-    tags: ["Marketing", "Performance", "Analytics"],
-    employmentType: "remote",
-    location: "Удалённо"
-  },
-  {
-    title: "Product Analyst",
-    company: "VK",
-    salary: "200–260k",
-    description: "Аналитика поведения пользователей, SQL, A/B тесты, продуктовые рекомендации.",
-    tags: ["Analytics", "SQL", "Product"],
-    employmentType: "full-time",
-    location: "Санкт-Петербург"
-  },
-  {
-    title: "Senior Product Manager – Fintech",
-    company: "Tinkoff",
-    salary: "260–350k",
-    description: "Запуск финтех-фич, работа с кросс-командами, анализ метрик, рост юнит-экономики.",
-    tags: ["Product", "Fintech", "Strategy"],
-    employmentType: "hybrid",
-    location: "Москва"
-  },
-  {
-    title: "Email/CRM Marketing Lead",
-    company: "Wildberries",
-    salary: "180–240k",
-    description: "Стратегия CRM-коммуникаций, сегментация, персонализация, автоматизации.",
-    tags: ["CRM", "Marketing", "Automation"],
-    employmentType: "remote",
-    location: "Удалённо"
-  },
-  {
-    title: "UX/UI Designer – eCommerce",
-    company: "Lamoda",
-    salary: "150–200k",
-    description: "Дизайн пользовательских сценариев, оптимизация интерфейсов, мобильные UI, CJM.",
-    tags: ["Design", "UX/UI", "eCommerce"],
-    employmentType: "hybrid",
-    location: "Москва"
-  },
-  {
-    title: "Data Engineer – Retail Analytics",
-    company: "Magnit Tech",
-    salary: "220–300k",
-    description: "Построение витрин данных, ETL, ClickHouse, Airflow, оптимизация хранилищ.",
-    tags: ["Data", "ETL", "Analytics"],
-    employmentType: "full-time",
-    location: "Краснодар"
-  },
-  {
-    title: "Digital Marketing Manager",
-    company: "СберМаркет",
-    salary: "160–230k",
-    description: "Стратегия digital-продвижения, управление перформанс-каналами, работа с аналитикой.",
-    tags: ["Digital", "Marketing", "Strategy"],
-    employmentType: "remote",
-    location: "Удалённо"
-  },
-  {
-    title: "Front-end Developer – React",
-    company: "Avito",
-    salary: "260–330k",
-    description: "Разработка интерфейсов, оптимизация производительности, работа с дизайнерами.",
-    tags: ["Frontend", "React", "JavaScript"],
-    employmentType: "hybrid",
-    location: "Санкт-Петербург"
-  },
-  {
-    title: "Product Researcher",
-    company: "Циан",
-    salary: "180–240k",
-    description: "Проведение пользовательских исследований, CJM, глубинные интервью, формирование инсайтов.",
-    tags: ["Research", "UX", "Product"],
-    employmentType: "full-time",
-    location: "Москва"
-  }
-];
 
 const searchFiltersSchema = z.object({
   company: z.string().optional(),
@@ -352,8 +157,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   
-  // Seed jobs on startup
-  await storage.seedJobs(SEED_JOBS);
+ 
 
   // Test GigaChat integration
   app.get("/api/test-gigachat", async (_req, res) => {
@@ -377,27 +181,86 @@ export async function registerRoutes(
     }
   });
 
+  // HH.ru API - Get all areas (regions) with caching
+  app.get("/api/hh/areas", async (_req, res) => {
+    try {
+      const now = Date.now();
+      if (hhAreasCache && hhAreasCacheUpdatedAt && now - hhAreasCacheUpdatedAt < HH_AREAS_TTL_MS) {
+        return res.json(hhAreasCache);
+      }
+
+      const response = await fetch("https://api.hh.ru/areas", {
+        headers: {
+          "User-Agent": "JobSwipe/1.0 (job-search-app)",
+          "Accept": "application/json",
+        },
+      });
+      
+      if (!response.ok) {
+        console.error("[HH API] Failed to fetch areas:", await response.text());
+        return res.status(500).json({ error: "Failed to load areas" });
+      }
+
+      const data = await response.json() as any[];
+      const flat: { id: string; name: string }[] = [];
+
+      function walk(node: any) {
+        if (node.id && node.name) {
+          flat.push({ id: String(node.id), name: node.name });
+        }
+        if (Array.isArray(node.areas)) {
+          node.areas.forEach(walk);
+        }
+      }
+
+      data.forEach(walk);
+
+      hhAreasCache = flat;
+      hhAreasCacheUpdatedAt = now;
+
+      console.log(`[HH API] Cached ${flat.length} areas`);
+      res.json(flat);
+    } catch (err) {
+      console.error("[HH API] Areas error:", err);
+      res.status(500).json({ error: "Failed to load areas" });
+    }
+  });
+
   // HH.ru API - Get jobs with batch pagination
   // Each batch = one HH API page with per_page=30
   // Filters out already-swiped vacancies for authenticated users
+  // Supports multiple area params: area=1&area=2
   app.get("/api/hh/jobs", async (req, res) => {
     try {
       const text = (req.query.text as string) || "маркетинг";
-      const area = (req.query.area as string) || "1";
       const employment = req.query.employment as string | undefined;
       const schedule = req.query.schedule as string | undefined;
       const experience = req.query.experience as string | undefined;
       const batch = parseInt(req.query.batch as string) || 1;
       const userId = req.query.userId as string | undefined;
       
+      // Handle multiple area params
+      const areaParam = req.query.area;
+      let areas: string[] = [];
+      if (Array.isArray(areaParam)) {
+        areas = areaParam as string[];
+      } else if (typeof areaParam === "string" && areaParam.trim() !== "") {
+        areas = [areaParam];
+      }
+      if (areas.length === 0) {
+        areas = ["1"]; // Default to Moscow
+      }
+      
       const page = batch - 1;
       
       const params = new URLSearchParams({
         text,
-        area,
         per_page: String(BATCH_SIZE),
         page: String(page),
       });
+      
+      // Add all areas to params
+      areas.forEach(a => params.append("area", a));
       
       if (employment && employment !== "all") params.append("employment", employment);
       if (schedule && schedule !== "all") params.append("schedule", schedule);
