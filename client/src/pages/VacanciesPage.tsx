@@ -234,7 +234,7 @@ export default function VacanciesPage() {
     loadAreas();
   }, []);
 
-  const updateAreas = useCallback((value: string, checked: boolean) => {
+  const updateAreasAndSearch = useCallback((value: string, checked: boolean) => {
     setFilters(prev => {
       const set = new Set(prev.areas);
       if (checked) {
@@ -243,9 +243,14 @@ export default function VacanciesPage() {
         set.delete(value);
       }
       const next = Array.from(set);
-      return { ...prev, areas: next.length ? next : ["1"] };
+      const newFilters = { ...prev, areas: next.length ? next : ["1"] };
+      
+      // Auto-trigger search with new areas
+      setTimeout(() => executeSearch(newFilters), 0);
+      
+      return newFilters;
     });
-  }, []);
+  }, [executeSearch]);
 
   const filteredAreas = allAreas.filter(a =>
     a.label.toLowerCase().includes(areaSearch.toLowerCase())
@@ -630,7 +635,7 @@ export default function VacanciesPage() {
             </div>
             
             <div className="grid grid-cols-2 gap-3">
-              <div>
+              <div className="col-span-2">
                 <label className="text-xs font-semibold text-gray-500 mb-1.5 block uppercase tracking-wide">Регион</label>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -644,7 +649,7 @@ export default function VacanciesPage() {
                           ? "Выберите регионы"
                           : filters.areas.length === 1
                             ? allAreas.find(a => a.value === filters.areas[0])?.label ?? "Выбран 1 регион"
-                            : `Выбрано: ${filters.areas.length}`}
+                            : `Выбрано регионов: ${filters.areas.length}`}
                       </span>
                       <ChevronDown className="w-4 h-4 opacity-60" />
                     </Button>
@@ -666,7 +671,7 @@ export default function VacanciesPage() {
                           >
                             <Checkbox
                               checked={checked}
-                              onCheckedChange={(v) => updateAreas(area.value, Boolean(v))}
+                              onCheckedChange={(v) => updateAreasAndSearch(area.value, Boolean(v))}
                             />
                             <span className="truncate">{area.label}</span>
                           </label>
@@ -675,6 +680,33 @@ export default function VacanciesPage() {
                     </div>
                   </PopoverContent>
                 </Popover>
+                {filters.areas.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {filters.areas.slice(0, 5).map(areaId => {
+                      const area = allAreas.find(a => a.value === areaId);
+                      return (
+                        <span
+                          key={areaId}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full text-xs"
+                        >
+                          {area?.label || areaId}
+                          <button
+                            type="button"
+                            onClick={() => updateAreasAndSearch(areaId, false)}
+                            className="hover:bg-indigo-100 rounded-full p-0.5"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                    {filters.areas.length > 5 && (
+                      <span className="text-xs text-gray-500 px-2 py-0.5">
+                        +{filters.areas.length - 5}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
               
               <div>

@@ -164,6 +164,16 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+- **2025-12-08**: Multi-region filter for vacancies
+  - **New Endpoint**: `/api/hh/areas` fetches all HH.ru regions with 1-hour cache
+  - **Multiple Regions**: Filter now supports selecting multiple regions simultaneously
+  - **Popover UI**: Region filter changed from Select to Popover with checkboxes
+  - **Region Search**: Search input to filter regions in the popover
+  - **Visual Badges**: Selected regions shown as removable badges below the filter
+  - **Auto-Search**: Selecting/deselecting regions auto-triggers new vacancy search
+  - **Backend Support**: `/api/hh/jobs` now accepts multiple `area` params (`area=1&area=2`)
+  - **Default Fallback**: If all regions deselected, defaults to Moscow (id=1)
+
 - **2025-12-07**: GigaChat integration improvements
   - **Undici Agent**: Replaced require("undici").Agent with proper imported Agent class
   - **Both Certificates**: Now loads both russian_trusted_root_ca_pem.crt and russian_trusted_sub_ca_pem.crt
