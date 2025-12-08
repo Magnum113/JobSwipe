@@ -140,6 +140,7 @@ app.use((req, res, next) => {
       },
       () => {
         log(`serving on port ${port}`);
+        console.log("[Startup] Application startup complete - ready to accept requests");
       },
     );
   } catch (err) {

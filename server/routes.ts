@@ -222,14 +222,14 @@ export async function registerRoutes(
       const data = await response.json() as any[];
       const flat: { id: string; name: string }[] = [];
 
-      function walk(node: any) {
+      const walk = (node: any): void => {
         if (node.id && node.name) {
           flat.push({ id: String(node.id), name: node.name });
         }
         if (Array.isArray(node.areas)) {
           node.areas.forEach(walk);
         }
-      }
+      };
 
       data.forEach(walk);
 
