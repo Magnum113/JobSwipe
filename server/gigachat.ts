@@ -3,7 +3,6 @@ import type { Job } from "@shared/schema";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { fileURLToPath } from "url";
 import { Agent } from "undici";
 
 const TOKEN_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth";
@@ -44,14 +43,14 @@ try {
   const certsDir = getCertsDir();
   const certRootPath = path.join(certsDir, "russian_trusted_root_ca_pem.crt");
   const certSubPath = path.join(certsDir, "russian_trusted_sub_ca_pem.crt");
-  
+
   if (fs.existsSync(certRootPath) && fs.existsSync(certSubPath)) {
     caCerts = [
       fs.readFileSync(certRootPath, "utf8"),
-      fs.readFileSync(certSubPath, "utf8")
+      fs.readFileSync(certSubPath, "utf8"),
     ];
     gigaChatAgent = new Agent({
-      connect: { ca: caCerts }
+      connect: { ca: caCerts },
     });
     console.log("[GigaChat] Certificates loaded successfully");
   } else {
@@ -69,14 +68,14 @@ export async function getAccessToken(): Promise<string | null> {
     console.warn("[GigaChat] Agent not initialized, certificates may be missing");
     return null;
   }
-  
+
   try {
     const authKey = process.env.GIGACHAT_AUTH_KEY;
     if (!authKey) {
       console.warn("[GigaChat] GIGACHAT_AUTH_KEY not set");
       return null;
     }
-    
+
     const scope = process.env.GIGACHAT_SCOPE || "GIGACHAT_API_PERS";
 
     const response = await fetch(TOKEN_URL, {
@@ -88,7 +87,7 @@ export async function getAccessToken(): Promise<string | null> {
         Authorization: `Basic ${authKey}`,
       },
       body: new URLSearchParams({ scope }).toString(),
-      dispatcher: gigaChatAgent
+      dispatcher: gigaChatAgent,
     } as any);
 
     if (!response.ok) {
@@ -97,7 +96,7 @@ export async function getAccessToken(): Promise<string | null> {
       return null;
     }
 
-    const data = await response.json() as any;
+    const data = (await response.json()) as any;
     return data.access_token || null;
   } catch (err) {
     console.error("[GigaChat] TOKEN FAILURE:", err);
@@ -139,9 +138,9 @@ export async function generateCoverLetter(resume: string, vacancy: Job): Promise
 Краткое описание / обязанности:
 ${vacancy.description || "—"}
 Ключевые теги/направления:
-${((vacancy as any).tags && (vacancy as any).tags.length)
-  ? (vacancy as any).tags.join(", ")
-  : "—"}
+${(vacancy as any).tags && (vacancy as any).tags.length
+    ? (vacancy as any).tags.join(", ")
+    : "—"}
 === ВАКАНСИЯ КОНЕЦ ===
 `.trim();
 
@@ -211,14 +210,12 @@ ${resume}
       },
       body: JSON.stringify({
         model: "GigaChat",
-        messages: [
-          { role: "user", content: prompt }
-        ],
+        messages: [{ role: "user", content: prompt }],
       }),
-      dispatcher: gigaChatAgent
+      dispatcher: gigaChatAgent,
     } as any);
 
-    const data = await response.json() as any;
+    const data = (await response.json()) as any;
 
     if (!response.ok) {
       console.error("[GigaChat] CHAT ERROR:", data);
