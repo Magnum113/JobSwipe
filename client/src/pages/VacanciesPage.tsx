@@ -6,9 +6,22 @@ import { X, Heart, RotateCcw, Briefcase, Filter, Search, ChevronDown, AlertCircl
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CenteredLoader } from "@/components/ui/loader";
 import type { HHJob, HHJobsResponse, Resume } from "@shared/schema";
+
+type AreaOption = { value: string; label: string };
+
+const STATIC_AREAS: AreaOption[] = [
+  { value: "1", label: "Москва" },
+  { value: "2", label: "Санкт-Петербург" },
+  { value: "113", label: "Вся Россия" },
+  { value: "1001", label: "Екатеринбург" },
+  { value: "4", label: "Новосибирск" },
+  { value: "3", label: "Казань" },
+];
 
 interface ProfessionResponse {
   profession: string | null;
@@ -46,7 +59,9 @@ interface HHFilters {
 async function fetchHHJobs(filters: HHFilters, batch: number, userId?: string | null): Promise<HHJobsResponse> {
   const params = new URLSearchParams();
   if (filters.text) params.append("text", filters.text);
-  if (filters.area) params.append("area", filters.area);
+  if (filters.areas && filters.areas.length > 0) {
+    filters.areas.forEach((areaId) => params.append("area", areaId));
+  }
   if (filters.employment && filters.employment !== "all") params.append("employment", filters.employment);
   if (filters.schedule && filters.schedule !== "all") params.append("schedule", filters.schedule);
   if (filters.experience && filters.experience !== "all") params.append("experience", filters.experience);
@@ -118,15 +133,6 @@ async function fetchProfession(userId: string | null): Promise<ProfessionRespons
   return response.json();
 }
 
-const AREAS = [
-  { value: "1", label: "Москва" },
-  { value: "2", label: "Санкт-Петербург" },
-  { value: "113", label: "Вся Россия" },
-  { value: "1001", label: "Екатеринбург" },
-  { value: "4", label: "Новосибирск" },
-  { value: "3", label: "Казань" },
-];
-
 const EMPLOYMENT_TYPES = [
   { value: "all", label: "Любой тип" },
   { value: "full", label: "Полная занятость" },
@@ -192,11 +198,58 @@ export default function VacanciesPage() {
   
   const [filters, setFilters] = useState<HHFilters>({
     text: "",
-    area: "1",
+    areas: ["1"],
     employment: "all",
     schedule: "all",
     experience: "all",
   });
+  
+  const [allAreas, setAllAreas] = useState<AreaOption[]>(STATIC_AREAS);
+  const [areaSearch, setAreaSearch] = useState("");
+  
+  // Load all areas from HH API once
+  useEffect(() => {
+    async function loadAreas() {
+      try {
+        const res = await fetch("/api/hh/areas");
+        if (!res.ok) return;
+        const data: { id: string; name: string }[] = await res.json();
+
+        const dynamicAreas: AreaOption[] = data.map(a => ({
+          value: String(a.id),
+          label: a.name,
+        }));
+
+        const merged = new Map<string, AreaOption>();
+        [...STATIC_AREAS, ...dynamicAreas].forEach(a => {
+          if (!merged.has(a.value)) merged.set(a.value, a);
+        });
+
+        setAllAreas(Array.from(merged.values()));
+      } catch (e) {
+        console.error("Failed to load HH areas", e);
+      }
+    }
+
+    loadAreas();
+  }, []);
+
+  const updateAreas = useCallback((value: string, checked: boolean) => {
+    setFilters(prev => {
+      const set = new Set(prev.areas);
+      if (checked) {
+        set.add(value);
+      } else {
+        set.delete(value);
+      }
+      const next = Array.from(set);
+      return { ...prev, areas: next.length ? next : ["1"] };
+    });
+  }, []);
+
+  const filteredAreas = allAreas.filter(a =>
+    a.label.toLowerCase().includes(areaSearch.toLowerCase())
+  );
   
   const [appliedFilters, setAppliedFilters] = useState<HHFilters | null>(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -234,7 +287,7 @@ export default function VacanciesPage() {
     if (!initialLoadDone && authStatus?.authenticated && professionData?.profession) {
       const initialFilters: HHFilters = {
         text: professionData.profession,
-        area: "1",
+        areas: ["1"],
         employment: "all",
         schedule: "all",
         experience: "all",
@@ -251,7 +304,7 @@ export default function VacanciesPage() {
     if (initialLoadDone && professionData?.profession && lastProfessionRef.current !== professionData.profession) {
       const newFilters: HHFilters = {
         text: professionData.profession,
-        area: filters.area,
+        areas: filters.areas,
         employment: filters.employment,
         schedule: filters.schedule,
         experience: filters.experience,
@@ -260,7 +313,7 @@ export default function VacanciesPage() {
       executeSearch(newFilters);
       lastProfessionRef.current = professionData.profession;
     }
-  }, [initialLoadDone, professionData?.profession, filters.area, filters.employment, filters.schedule, filters.experience, executeSearch]);
+  }, [initialLoadDone, professionData?.profession, filters.areas, filters.employment, filters.schedule, filters.experience, executeSearch]);
 
   const handleSearch = useCallback(() => {
     executeSearch(filters);
@@ -400,7 +453,7 @@ export default function VacanciesPage() {
   const clearFilters = useCallback(() => {
     const clearedFilters: HHFilters = {
       text: "",
-      area: "1",
+      areas: ["1"],
       employment: "all",
       schedule: "all",
       experience: "all",
@@ -579,19 +632,49 @@ export default function VacanciesPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-semibold text-gray-500 mb-1.5 block uppercase tracking-wide">Регион</label>
-                <Select value={filters.area} onValueChange={(v) => updateFilter("area", v)}>
-                  <SelectTrigger 
-                    className="rounded-xl border-gray-200/80 h-11 text-sm bg-white shadow-sm hover:shadow-md transition-shadow" 
-                    data-testid="select-area"
-                  >
-                    <SelectValue placeholder="Выберите регион" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border border-gray-100 shadow-xl rounded-xl">
-                    {AREAS.map((area) => (
-                      <SelectItem key={area.value} value={area.value}>{area.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-between rounded-xl border-gray-200/80 h-11 text-sm bg-white shadow-sm hover:shadow-md transition-shadow"
+                      data-testid="select-area"
+                    >
+                      <span className="truncate">
+                        {filters.areas.length === 0
+                          ? "Выберите регионы"
+                          : filters.areas.length === 1
+                            ? allAreas.find(a => a.value === filters.areas[0])?.label ?? "Выбран 1 регион"
+                            : `Выбрано: ${filters.areas.length}`}
+                      </span>
+                      <ChevronDown className="w-4 h-4 opacity-60" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-72 p-3 bg-white border border-gray-100 shadow-xl rounded-2xl">
+                    <Input
+                      placeholder="Найти регион..."
+                      value={areaSearch}
+                      onChange={(e) => setAreaSearch(e.target.value)}
+                      className="mb-2 h-9 text-sm"
+                    />
+                    <div className="max-h-60 overflow-y-auto space-y-1 pr-1">
+                      {filteredAreas.map(area => {
+                        const checked = filters.areas.includes(area.value);
+                        return (
+                          <label
+                            key={area.value}
+                            className="flex items-center gap-2 py-1 px-1 rounded-md hover:bg-gray-50 cursor-pointer text-sm"
+                          >
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(v) => updateAreas(area.value, Boolean(v))}
+                            />
+                            <span className="truncate">{area.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
               
               <div>

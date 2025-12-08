@@ -1,0 +1,277 @@
+Ты — опытный full-stack разработчик (TypeScript, React, Node, Express, shadcn/ui) и хорошо понимаешь HeadHunter API.
+
+ЗАДАЧА:
+Сделать фильтр регионов в JobSwiper таким:
+1) Оставить быстрый список регионов (Москва, Санкт-Петербург, Вся Россия, Екатеринбург, Новосибирск, Казань).
+2) Добавить возможность выбирать НЕСКОЛЬКО регионов (чекбоксы).
+3) Подтягивать ВСЕ доступные регионы из hh.ru, давать по ним поиск и тоже выбирать чекбоксами.
+4) Передавать в запрос к нашему бэкенду и дальше в hh.ru ВСЕ выбранные регионы одновременно (`area=...&area=...`).
+5) Если пользователь снял все галочки, по умолчанию использовать Москву (id=1).
+
+Сделай все правки САМ в нужных файлах проекта. Ниже требования по слоям.
+
+==================================================
+ФРОНТ: VacanciesPage (React) и фильтры
+==================================================
+
+1) Найди компонент страницы вакансий (что-то вроде `VacanciesPage` в файле, где уже есть:
+   - `interface HHFilters`
+   - `fetchHHJobs`
+   - состояние `filters`
+   - текущий Select по региону.
+
+2) Измени тип фильтров:
+
+БЫЛО (пример):
+  interface HHFilters {
+    text: string;
+    area: string;
+    employment: string;
+    schedule: string;
+    experience: string;
+  }
+
+СТАЛО:
+  interface HHFilters {
+    text: string;
+    areas: string[];   // массив id регионов
+    employment: string;
+    schedule: string;
+    experience: string;
+  }
+
+3) Начальное состояние `filters`:
+  - вместо `area: "1"` сделай `areas: ["1"]` (Москва по умолчанию).
+  - ВО ВСЕХ местах, где раньше использовался `filters.area`, замени на `filters.areas`.
+  - В логике, где при первой загрузке подставляется профессия / дефолтные фильтры, тоже используй `areas: ["1"]`.
+
+4) В функции `fetchHHJobs(filters: HHFilters, ...)` измени формирование query-параметров:
+
+БЫЛО (пример):
+  if (filters.area) params.append("area", filters.area);
+
+СТАЛО:
+  if (filters.areas && filters.areas.length > 0) {
+    filters.areas.forEach((areaId) => params.append("area", areaId));
+  }
+
+Остальные параметры (text, employment, schedule, experience, batch, userId) оставить как есть.
+
+5) Добавь состояние для списка всех регионов и строки поиска:
+
+  type AreaOption = { value: string; label: string };
+
+  const STATIC_AREAS: AreaOption[] = [
+    { value: "1", label: "Москва" },
+    { value: "2", label: "Санкт-Петербург" },
+    { value: "113", label: "Вся Россия" },
+    { value: "1001", label: "Екатеринбург" },
+    { value: "4", label: "Новосибирск" },
+    { value: "3", label: "Казань" },
+  ];
+
+  const [allAreas, setAllAreas] = useState<AreaOption[]>(STATIC_AREAS);
+  const [areaSearch, setAreaSearch] = useState("");
+
+6) Сделай `useEffect`, который один раз подгружает все регионы с бэкенда (`/api/hh/areas`):
+
+  useEffect(() => {
+    async function loadAreas() {
+      try {
+        const res = await fetch("/api/hh/areas");
+        if (!res.ok) return;
+        const data: { id: string; name: string }[] = await res.json();
+
+        const dynamicAreas: AreaOption[] = data.map(a => ({
+          value: String(a.id),
+          label: a.name,
+        }));
+
+        const merged = new Map<string, AreaOption>();
+        [...STATIC_AREAS, ...dynamicAreas].forEach(a => {
+          if (!merged.has(a.value)) merged.set(a.value, a);
+        });
+
+        setAllAreas(Array.from(merged.values()));
+      } catch (e) {
+        console.error("Failed to load HH areas", e);
+      }
+    }
+
+    loadAreas();
+  }, []);
+
+7) Добавь функцию обновления выбранных регионов:
+
+  const updateAreas = useCallback((value: string, checked: boolean) => {
+    setFilters(prev => {
+      const set = new Set(prev.areas);
+      if (checked) {
+        set.add(value);
+      } else {
+        set.delete(value);
+      }
+      const next = Array.from(set);
+      // если ничего не выбрано — дефолт Москва
+      return { ...prev, areas: next.length ? next : ["1"] };
+    });
+  }, []);
+
+  И вычисление отфильтрованных регионов по поиску:
+
+  const filteredAreas = allAreas.filter(a =>
+    a.label.toLowerCase().includes(areaSearch.toLowerCase())
+  );
+
+8) Вместо старого селекта по региону (Select/SelectItem) сделай Popover с мультивыбором (используй уже существующие shadcn/ui компоненты из проекта: `Popover`, `PopoverTrigger`, `PopoverContent`, `Checkbox`, `Button`, `Input`, и иконку `ChevronDown` из `lucide-react`):
+
+В блоке фильтров, где сейчас "Регион", замени разметку на примерно такую (адаптируй под текущие стили):
+
+  <div>
+    <label className="text-xs font-semibold text-gray-500 mb-1.5 block uppercase tracking-wide">
+      Регион
+    </label>
+
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className="w-full justify-between rounded-xl border-gray-200/80 h-11 text-sm bg-white shadow-sm hover:shadow-md transition-shadow"
+          data-testid="select-area"
+        >
+          <span className="truncate">
+            {filters.areas.length === 0
+              ? "Выберите регионы"
+              : filters.areas.length === 1
+                ? allAreas.find(a => a.value === filters.areas[0])?.label ?? "Выбран 1 регион"
+                : `Выбрано регионов: ${filters.areas.length}`}
+          </span>
+          <ChevronDown className="w-4 h-4 opacity-60" />
+        </Button>
+      </PopoverTrigger>
+
+      <PopoverContent className="w-72 p-3 bg-white border border-gray-100 shadow-xl rounded-2xl">
+        <Input
+          placeholder="Найти регион..."
+          value={areaSearch}
+          onChange={(e) => setAreaSearch(e.target.value)}
+          className="mb-2 h-9 text-sm"
+        />
+        <div className="max-h-60 overflow-y-auto space-y-1 pr-1">
+          {filteredAreas.map(area => {
+            const checked = filters.areas.includes(area.value);
+            return (
+              <label
+                key={area.value}
+                className="flex items-center gap-2 py-1 px-1 rounded-md hover:bg-gray-50 cursor-pointer text-sm"
+              >
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={(v) => updateAreas(area.value, Boolean(v))}
+                />
+                <span className="truncate">{area.label}</span>
+              </label>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  </div>
+
+Убедись, что:
+- использованы те же UI-компоненты, что уже подключены в проекте;
+- импорты добавлены корректно.
+
+9) `hasActiveFilters` нужно тоже поправить: учитывай, что теперь `filters.areas` — массив. Сам факт выбора регионов не считается «активным фильтром», если там только дефолтное значение ["1"]. Можно оставить как есть, если сейчас логика фильтров не завязана на регион.
+
+==================================================
+БЭКЕНД: поддержка нескольких area и эндпоинт /api/hh/areas
+==================================================
+
+1) Найди обработчик маршрута `/api/hh/jobs` (там, где идёт запрос на `https://api.hh.ru/vacancies`).
+
+Сейчас там, скорее всего, что-то вроде:
+
+  const { text, area, employment, schedule, experience, batch } = req.query;
+  const searchParams = new URLSearchParams();
+  if (text) searchParams.append("text", String(text));
+  if (area) searchParams.append("area", String(area));
+
+Нужно переписать обработку `area`, чтобы поддерживался массив:
+
+  const areaParam = req.query.area;
+  let areas: string[] = [];
+
+  if (Array.isArray(areaParam)) {
+    areas = areaParam as string[];
+  } else if (typeof areaParam === "string" && areaParam.trim() !== "") {
+    areas = [areaParam];
+  }
+
+  areas.forEach(a => searchParams.append("area", a));
+
+Остальную логику (text, employment, schedule, experience, batch, userId, пагинацию и т.д.) оставить без изменений.
+
+2) Добавь новый эндпоинт `/api/hh/areas`, который один раз в N времени подтягивает полный список регионов из `https://api.hh.ru/areas` и кэширует его в памяти.
+
+Можно сделать так (адаптируй под стиль проекта, но сохрани суть):
+
+  let hhAreasCache: { id: string; name: string }[] | null = null;
+  let hhAreasCacheUpdatedAt: number | null = null;
+  const HH_AREAS_TTL_MS = 1000 * 60 * 60; // 1 час
+
+  app.get("/api/hh/areas", async (_req, res) => {
+    try {
+      const now = Date.now();
+      if (hhAreasCache && hhAreasCacheUpdatedAt && now - hhAreasCacheUpdatedAt < HH_AREAS_TTL_MS) {
+        return res.json(hhAreasCache);
+      }
+
+      const response = await fetch("https://api.hh.ru/areas");
+      if (!response.ok) {
+        console.error("[HH API] Failed to fetch areas:", await response.text());
+        return res.status(500).json({ error: "Failed to load areas" });
+      }
+
+      const data = await response.json() as any[];
+
+      const flat: { id: string; name: string }[] = [];
+
+      function walk(node: any) {
+        if (node.id && node.name) {
+          flat.push({ id: String(node.id), name: node.name });
+        }
+        if (Array.isArray(node.areas)) {
+          node.areas.forEach(walk);
+        }
+      }
+
+      data.forEach(walk);
+
+      hhAreasCache = flat;
+      hhAreasCacheUpdatedAt = now;
+
+      res.json(flat);
+    } catch (err) {
+      console.error("[HH API] Areas error:", err);
+      res.status(500).json({ error: "Failed to load areas" });
+    }
+  });
+
+3) Проследи, чтобы:
+  - новые импорты (`fetch` из `undici` или глобальный) были корректны;
+  - кэш работал, но при ошибке просто возвращался статус 500, а фронт тихо игнорировал эту ошибку и работал хотя бы со статическим списком.
+
+==================================================
+ФИНАЛЬНАЯ ПРОВЕРКА
+==================================================
+
+1) Собери проект.
+2) Убедись, что:
+   - фильтр регионов открывается как поповер;
+   - можно отметить несколько регионов чекбоксами;
+   - поиск по названию региона в поповере работает;
+   - при запросе `/api/hh/jobs` в логи уходят несколько параметров `area` (area=1&area=2 и т.д.);
+   - при снятии всех галочек хотя бы один регион остаётся (Москва, id=1).
+
+Сделай все изменения аккуратно, сохрани текущий дизайн и Tailwind-классы, не ломай остальные фильтры и логику свайпов.
