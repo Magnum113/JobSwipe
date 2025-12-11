@@ -76,7 +76,7 @@ function CompatibilityBadge({ compatibility }: { compatibility: CompatibilityRes
                 className="bg-white rounded-2xl shadow-2xl p-5 max-w-[340px] w-full mx-4"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="flex items-start justify-between mb-4">
+                <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <div className={`p-2 rounded-xl bg-gradient-to-r ${getGradient()}`}>
                       <Brain className="w-5 h-5 text-white" />
@@ -97,6 +97,10 @@ function CompatibilityBadge({ compatibility }: { compatibility: CompatibilityRes
                   </button>
                 </div>
 
+                <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+                  AI сравнивает ваше резюме с требованиями вакансии и показывает, насколько вы подходите для этой позиции.
+                </p>
+
                 <div className="mb-4">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm text-gray-600">Совпадение</span>
@@ -115,13 +119,14 @@ function CompatibilityBadge({ compatibility }: { compatibility: CompatibilityRes
                 </div>
 
                 <div className="bg-gray-50 rounded-xl p-3 mb-4">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Анализ AI:</p>
                   <p className="text-sm text-gray-700 leading-relaxed">
                     {compatibility.explanation}
                   </p>
                 </div>
 
                 <div className="space-y-2">
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Что анализирует AI:</p>
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">На основе чего оценка:</p>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="flex items-center gap-2 text-xs text-gray-600">
                       <FileText className="w-3.5 h-3.5 text-indigo-500" />
