@@ -99,7 +99,7 @@ ${resume}
         "X-Title": "JobSwipe"
       },
       body: JSON.stringify({
-        model: "openai/gpt-4.1-mini",
+        model: "openai/gpt-oss-20b:free",
         messages: [
           {
             role: "system",
@@ -217,7 +217,7 @@ ${resume.slice(0, 3000)}
         "X-Title": "JobSwipe"
       },
       body: JSON.stringify({
-        model: "openai/gpt-4.1-mini",
+        model: "openai/gpt-oss-20b:free",
         messages: [
           {
             role: "system",
