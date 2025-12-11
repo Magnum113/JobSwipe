@@ -4,7 +4,8 @@ import {
   type Swipe, type InsertSwipe,
   type Resume, type InsertResume,
   type Application, type InsertApplication,
-  jobs, swipes, users, resumes, applications 
+  type AiCompatibility, type InsertAiCompatibility,
+  jobs, swipes, users, resumes, applications, aiCompatibility 
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, notInArray, inArray, desc, ilike, or, and, gte, lte, sql, isNull } from "drizzle-orm";
@@ -43,6 +44,12 @@ export interface IStorage {
   getAllApplications(): Promise<Application[]>;
   updateApplicationCoverLetter(id: number, coverLetter: string): Promise<Application | undefined>;
   getPendingApplicationsCount(userId: string): Promise<number>;
+  
+  // AI Compatibility
+  saveCompatibility(userId: string, vacancyId: string, data: { score: number; color: string; explanation: string }): Promise<AiCompatibility>;
+  getCompatibility(userId: string, vacancyId: string): Promise<AiCompatibility | undefined>;
+  getCompatibilitiesByUser(userId: string): Promise<AiCompatibility[]>;
+  deleteCompatibility(userId: string, vacancyId: string): Promise<void>;
 }
 
 export class DbStorage implements IStorage {
@@ -302,6 +309,51 @@ export class DbStorage implements IStorage {
         )
       ));
     return result.length;
+  }
+
+  // AI Compatibility methods
+  async saveCompatibility(userId: string, vacancyId: string, data: { score: number; color: string; explanation: string }): Promise<AiCompatibility> {
+    // Upsert: delete existing and insert new
+    await db.delete(aiCompatibility)
+      .where(and(
+        eq(aiCompatibility.userId, userId),
+        eq(aiCompatibility.vacancyId, vacancyId)
+      ));
+    
+    const [created] = await db.insert(aiCompatibility).values({
+      userId,
+      vacancyId,
+      score: data.score,
+      color: data.color,
+      explanation: data.explanation,
+    }).returning();
+    return created;
+  }
+
+  async getCompatibility(userId: string, vacancyId: string): Promise<AiCompatibility | undefined> {
+    const [result] = await db.select()
+      .from(aiCompatibility)
+      .where(and(
+        eq(aiCompatibility.userId, userId),
+        eq(aiCompatibility.vacancyId, vacancyId)
+      ))
+      .limit(1);
+    return result;
+  }
+
+  async getCompatibilitiesByUser(userId: string): Promise<AiCompatibility[]> {
+    return await db.select()
+      .from(aiCompatibility)
+      .where(eq(aiCompatibility.userId, userId))
+      .orderBy(desc(aiCompatibility.createdAt));
+  }
+
+  async deleteCompatibility(userId: string, vacancyId: string): Promise<void> {
+    await db.delete(aiCompatibility)
+      .where(and(
+        eq(aiCompatibility.userId, userId),
+        eq(aiCompatibility.vacancyId, vacancyId)
+      ));
   }
 }
 

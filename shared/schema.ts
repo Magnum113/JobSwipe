@@ -142,3 +142,29 @@ export interface HHUserInfo {
   first_name: string;
   last_name: string;
 }
+
+// AI Compatibility table
+export const aiCompatibility = pgTable("ai_compatibility", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  vacancyId: text("vacancy_id").notNull(),
+  score: integer("score").notNull(),
+  color: text("color").notNull(),
+  explanation: text("explanation").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAiCompatibilitySchema = createInsertSchema(aiCompatibility).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type AiCompatibility = typeof aiCompatibility.$inferSelect;
+export type InsertAiCompatibility = z.infer<typeof insertAiCompatibilitySchema>;
+
+export interface CompatibilityResult {
+  vacancyId: string;
+  score: number;
+  color: "green" | "yellow" | "red";
+  explanation: string;
+}

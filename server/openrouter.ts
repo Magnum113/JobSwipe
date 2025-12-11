@@ -1,4 +1,4 @@
-import type { Job } from "@shared/schema";
+import type { Job, CompatibilityResult, HHJob } from "@shared/schema";
 
 // ================================
 // GLOBAL DEBUG PROMPT STORAGE
@@ -145,4 +145,114 @@ function fallbackLetter(_vacancy: Job): string {
 
 Мой опыт и навыки позволяют закрывать задачи по развитию продукта и маркетинговых направлений.
 `.trim();
+}
+
+// ================================
+// AI COMPATIBILITY CALCULATION
+// ================================
+
+interface CompatibilityResponse {
+  score: number;
+  explanation: string;
+}
+
+function scoreToColor(score: number): "green" | "yellow" | "red" {
+  if (score >= 75) return "green";
+  if (score >= 40) return "yellow";
+  return "red";
+}
+
+export async function calculateCompatibility(
+  resume: string,
+  vacancy: Job | HHJob
+): Promise<CompatibilityResult> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  const vacancyId = String("id" in vacancy ? vacancy.id : "");
+
+  if (!apiKey || !resume || resume.trim().length < 50) {
+    return {
+      vacancyId,
+      score: 50,
+      color: "yellow",
+      explanation: "Недостаточно данных для анализа совместимости.",
+    };
+  }
+
+  const vacancyBlock = `
+Название: ${vacancy.title}
+Компания: ${vacancy.company}
+Зарплата: ${vacancy.salary || "—"}
+Описание: ${vacancy.description || "—"}
+Теги: ${(vacancy.tags && vacancy.tags.length) ? vacancy.tags.join(", ") : "—"}
+`.trim();
+
+  const prompt = `
+Проанализируй РЕЗЮМЕ и ВАКАНСИЮ, оцени степень совместимости кандидата с вакансией по шкале 0–100%.
+
+Критерии оценки:
+- Совпадение навыков и технологий
+- Релевантность опыта работы
+- Соответствие уровня позиции
+- Отраслевой опыт
+
+Основывайся ТОЛЬКО на информации из резюме. Не придумывай факты.
+
+=== ВАКАНСИЯ ===
+${vacancyBlock}
+
+=== РЕЗЮМЕ ===
+${resume.slice(0, 3000)}
+
+Верни ТОЛЬКО валидный JSON без markdown:
+{"score": <число 0-100>, "explanation": "<1-2 предложения почему такой score>"}
+`.trim();
+
+  try {
+    const response = await fetch(OPENROUTER_API_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://jobswiper.ru",
+        "X-Title": "JobSwipe"
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-4.1-mini",
+        messages: [
+          {
+            role: "system",
+            content: "Ты — HR-аналитик, оценивающий совместимость кандидата с вакансией. Отвечай только JSON."
+          },
+          { role: "user", content: prompt }
+        ],
+        temperature: 0.2,
+        max_tokens: 200
+      })
+    });
+
+    if (!response.ok) {
+      console.error("[Compatibility] OpenRouter error:", response.status);
+      return { vacancyId, score: 50, color: "yellow", explanation: "Ошибка анализа." };
+    }
+
+    const data = await response.json();
+    const text = data?.choices?.[0]?.message?.content || "";
+    
+    // Parse JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error("[Compatibility] No JSON in response:", text);
+      return { vacancyId, score: 50, color: "yellow", explanation: "Не удалось распарсить ответ." };
+    }
+
+    const parsed: CompatibilityResponse = JSON.parse(jsonMatch[0]);
+    const score = Math.max(0, Math.min(100, Math.round(parsed.score)));
+    const color = scoreToColor(score);
+    const explanation = sanitize(parsed.explanation || "");
+
+    return { vacancyId, score, color, explanation };
+  } catch (err) {
+    console.error("[Compatibility] Error:", err);
+    return { vacancyId, score: 50, color: "yellow", explanation: "Ошибка при расчёте совместимости." };
+  }
 }

@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CenteredLoader } from "@/components/ui/loader";
-import type { HHJob, HHJobsResponse, Resume } from "@shared/schema";
+import type { HHJob, HHJobsResponse, Resume, CompatibilityResult } from "@shared/schema";
 
 type AreaOption = { value: string; label: string };
 
@@ -133,6 +133,29 @@ async function fetchProfession(userId: string | null): Promise<ProfessionRespons
   return response.json();
 }
 
+async function fetchCompatibility(userId: string, vacancies: HHJob[]): Promise<CompatibilityResult[]> {
+  if (!userId || vacancies.length === 0) return [];
+  
+  const response = await fetch("/api/ai-compatibility/calc", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId,
+      vacancies: vacancies.map(v => ({
+        id: v.id,
+        title: v.title,
+        company: v.company,
+        salary: v.salary,
+        description: v.descriptionFull || v.description,
+        tags: v.tags,
+      })),
+    }),
+  });
+  
+  if (!response.ok) return [];
+  return response.json();
+}
+
 const EMPLOYMENT_TYPES = [
   { value: "all", label: "Любой тип" },
   { value: "full", label: "Полная занятость" },
@@ -169,6 +192,8 @@ export default function VacanciesPage() {
   const [batch, setBatch] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [compatibilityMap, setCompatibilityMap] = useState<Map<string, CompatibilityResult>>(new Map());
+  const searchTokenRef = useRef(0);
   
   const cardRef = useRef<VacancyCardRef>(null);
   
@@ -218,9 +243,15 @@ export default function VacanciesPage() {
 
   const executeSearch = useCallback(async (searchFilters: HHFilters) => {
     setIsSearching(true);
+    const currentToken = ++searchTokenRef.current;
+    
     try {
       const currentUserId = localStorage.getItem("userId");
       const response = await fetchHHJobs(searchFilters, 1, currentUserId);
+      
+      // Check if this search is still the active one
+      if (currentToken !== searchTokenRef.current) return;
+      
       setJobs(response.jobs);
       setHasMore(response.hasMore);
       setBatch(1);
@@ -228,10 +259,34 @@ export default function VacanciesPage() {
       setHistory([]);
       setSwipedIds(new Set());
       setAppliedFilters(searchFilters);
+      setCompatibilityMap(new Map()); // Clear old compatibility data
+      
+      // Fetch compatibility in background (first 5 jobs)
+      if (currentUserId && response.jobs.length > 0) {
+        const jobIdsToFetch = response.jobs.slice(0, 5).map(j => j.id);
+        fetchCompatibility(currentUserId, response.jobs.slice(0, 5))
+          .then(results => {
+            // Verify this is still the active search before updating state
+            if (currentToken !== searchTokenRef.current) return;
+            
+            setCompatibilityMap(prev => {
+              const newMap = new Map(prev);
+              results.forEach(r => {
+                if (jobIdsToFetch.includes(r.vacancyId)) {
+                  newMap.set(r.vacancyId, r);
+                }
+              });
+              return newMap;
+            });
+          })
+          .catch(err => console.error("Failed to fetch compatibility:", err));
+      }
     } catch (error) {
       console.error("Search failed:", error);
     } finally {
-      setIsSearching(false);
+      if (currentToken === searchTokenRef.current) {
+        setIsSearching(false);
+      }
     }
   }, []);
   
@@ -840,6 +895,7 @@ export default function VacanciesPage() {
                       onSwipe={handleSwipe} 
                       onExpand={() => setExpandedVacancy(job)}
                       active={isTop && !isSwiping && !expandedVacancy}
+                      compatibility={compatibilityMap.get(job.id)}
                     />
                  </div>
                );

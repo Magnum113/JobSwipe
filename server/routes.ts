@@ -1,11 +1,11 @@
 
 import type { Express } from "express";
-import { getLastOpenRouterPrompt, generateCoverLetter } from "./openrouter"; // путь подкорректируй под свою структуру
+import { getLastOpenRouterPrompt, generateCoverLetter, calculateCompatibility } from "./openrouter";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { users, resumes, applications } from "@shared/schema";
-import { insertJobSchema, insertSwipeSchema, insertApplicationSchema, type Job, type HHJob, type HHJobsResponse } from "@shared/schema";
+import { users, resumes, applications, aiCompatibility } from "@shared/schema";
+import { insertJobSchema, insertSwipeSchema, insertApplicationSchema, type Job, type HHJob, type HHJobsResponse, type CompatibilityResult } from "@shared/schema";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
 import {
@@ -404,6 +404,12 @@ export async function registerRoutes(
       
       // Create swipe
       const swipe = await storage.createSwipe(userId, vacancyId, direction);
+      
+      // Delete compatibility after swipe (fire and forget)
+      storage.deleteCompatibility(userId, vacancyId).catch(err => {
+        console.error("[Swipe] Error deleting compatibility:", err);
+      });
+      
       res.status(201).json({ ok: true, swipe });
     } catch (error) {
       console.error("Error recording swipe:", error);
@@ -438,6 +444,146 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error resetting swipes:", error);
       res.status(500).json({ error: "Failed to reset swipes" });
+    }
+  });
+
+  // =====================================================
+  // AI COMPATIBILITY ENDPOINTS
+  // =====================================================
+
+  // Calculate compatibility for vacancies
+  const compatibilityRequestSchema = z.object({
+    userId: z.string(),
+    vacancies: z.array(z.object({
+      id: z.union([z.string(), z.number()]),
+      title: z.string(),
+      company: z.string(),
+      salary: z.string().optional(),
+      description: z.string().nullable().optional(),
+      tags: z.array(z.string()).nullable().optional(),
+    })),
+  });
+
+  app.post("/api/ai-compatibility/calc", async (req, res) => {
+    try {
+      const { userId, vacancies } = compatibilityRequestSchema.parse(req.body);
+      
+      // Get user's selected resume
+      const [selectedResume] = await db.select()
+        .from(resumes)
+        .where(and(
+          eq(resumes.userId, userId),
+          eq(resumes.selected, true)
+        ));
+
+      if (!selectedResume || !selectedResume.content) {
+        return res.status(400).json({ error: "No resume found. Please sync your resume first." });
+      }
+
+      const resumeText = selectedResume.content;
+      const results: CompatibilityResult[] = [];
+      
+      // Process with concurrency limit of 3
+      const CONCURRENCY = 3;
+      const queue = [...vacancies];
+      const processing: Promise<void>[] = [];
+
+      while (queue.length > 0 || processing.length > 0) {
+        // Start new tasks up to concurrency limit
+        while (processing.length < CONCURRENCY && queue.length > 0) {
+          const vacancy = queue.shift()!;
+          const vacancyId = String(vacancy.id);
+          
+          // Check cache first
+          const cached = await storage.getCompatibility(userId, vacancyId);
+          if (cached) {
+            results.push({
+              vacancyId,
+              score: cached.score,
+              color: cached.color as "green" | "yellow" | "red",
+              explanation: cached.explanation,
+            });
+            continue;
+          }
+
+          // Calculate compatibility
+          const task = (async () => {
+            try {
+              const vacancyJob: Job = {
+                id: typeof vacancy.id === "number" ? vacancy.id : parseInt(vacancy.id) || 0,
+                title: vacancy.title,
+                company: vacancy.company,
+                salary: vacancy.salary || "",
+                description: vacancy.description || "",
+                tags: vacancy.tags || [],
+                employmentType: "full-time",
+                location: "",
+                createdAt: new Date(),
+              };
+
+              const result = await calculateCompatibility(resumeText, vacancyJob);
+              result.vacancyId = vacancyId;
+              
+              // Save to cache
+              await storage.saveCompatibility(userId, vacancyId, {
+                score: result.score,
+                color: result.color,
+                explanation: result.explanation,
+              });
+              
+              results.push(result);
+            } catch (err) {
+              console.error(`[Compatibility] Error for vacancy ${vacancyId}:`, err);
+              results.push({
+                vacancyId,
+                score: 50,
+                color: "yellow",
+                explanation: "Ошибка расчёта.",
+              });
+            }
+          })();
+
+          processing.push(task);
+        }
+
+        // Wait for all current tasks to complete
+        if (processing.length >= CONCURRENCY || queue.length === 0) {
+          await Promise.all(processing);
+          processing.length = 0;
+        }
+      }
+
+      res.json(results);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        console.error("[Compatibility] Validation error:", error.errors);
+        return res.status(400).json({ error: "Invalid request data", details: error.errors });
+      }
+      console.error("[Compatibility] Error:", error);
+      res.status(500).json({ error: "Failed to calculate compatibility" });
+    }
+  });
+
+  // Get cached compatibility for user
+  app.get("/api/ai-compatibility", async (req, res) => {
+    try {
+      const userId = req.query.userId as string;
+      if (!userId) {
+        return res.status(400).json({ error: "User ID is required" });
+      }
+      
+      const compatibilities = await storage.getCompatibilitiesByUser(userId);
+      const results: CompatibilityResult[] = compatibilities.map(c => ({
+        vacancyId: c.vacancyId,
+        score: c.score,
+        color: c.color as "green" | "yellow" | "red",
+        explanation: c.explanation,
+      }));
+      
+      res.json(results);
+    } catch (error) {
+      console.error("[Compatibility] Error fetching:", error);
+      res.status(500).json({ error: "Failed to fetch compatibility data" });
     }
   });
 
@@ -983,6 +1129,13 @@ export async function registerRoutes(
         .returning();
 
       console.log("[Async Apply] Created pending application:", pendingApp.id);
+      
+      // Delete compatibility after applying (fire and forget)
+      if (userId) {
+        storage.deleteCompatibility(userId, String(vacancyId)).catch(err => {
+          console.error("[Apply] Error deleting compatibility:", err);
+        });
+      }
 
       // Return immediately
       res.json({ 

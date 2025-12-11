@@ -1,15 +1,17 @@
 import { useRef, useCallback, useEffect, useState, forwardRef, useImperativeHandle } from "react";
 import { motion, PanInfo, useMotionValue, useTransform, useAnimation } from "framer-motion";
-import { Building2, Wallet, MapPin, Clock, ExternalLink } from "lucide-react";
+import { Building2, Wallet, MapPin, Clock, ExternalLink, Sparkles } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { HHJob } from "@shared/schema";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import type { HHJob, CompatibilityResult } from "@shared/schema";
 
 interface VacancyCardProps {
   job: HHJob;
   onSwipe: (direction: "left" | "right") => void;
   onExpand: () => void;
   active: boolean;
+  compatibility?: CompatibilityResult;
 }
 
 export interface VacancyCardRef {
@@ -23,8 +25,14 @@ const employmentTypeLabels: Record<string, string> = {
   "part-time": "Частичная",
 };
 
+const compatibilityColors = {
+  green: "bg-green-500",
+  yellow: "bg-yellow-500",
+  red: "bg-red-500",
+};
+
 export const VacancyCard = forwardRef<VacancyCardRef, VacancyCardProps>(
-  ({ job, onSwipe, onExpand, active }, ref) => {
+  ({ job, onSwipe, onExpand, active, compatibility }, ref) => {
     const controls = useAnimation();
     const x = useMotionValue(0);
     const isMounted = useRef(true);
@@ -198,6 +206,26 @@ export const VacancyCard = forwardRef<VacancyCardRef, VacancyCardProps>(
                 >
                   <ExternalLink className="w-4 h-4 text-indigo-600" />
                 </a>
+              )}
+              
+              {compatibility && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div 
+                        className={`absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full shadow-lg cursor-help ${compatibilityColors[compatibility.color]} text-white`}
+                        onClick={(e) => e.stopPropagation()}
+                        data-testid="badge-compatibility"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span className="font-bold text-sm">{compatibility.score}%</span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-[250px] text-center">
+                      <p className="text-sm">{compatibility.explanation}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               )}
             </div>
 

@@ -1,0 +1,79 @@
+Ты — Senior TypeScript Full-Stack Engineer уровня Staff, глубоко понимающий архитектуру моего проекта JobSwipe (Express + OpenRouter + HH API + drizzle + Replit DB).
+
+Задача: полностью реализовать новую фичу “AI-Совместимость” между резюме пользователя и вакансиями.
+
+Контекст:
+— сервис уже умеет анализировать резюме и вакансии через OpenRouter (см. generateCoverLetter),
+— есть структура вакансий HHJobsResponse → HHJob,
+— есть таблицы swipes, resumes, applications,
+— backend на Express, логика в server/routes.ts,
+— база данных — встроенная Replit Database через storage,
+— UI показывает список вакансий и одну карточку.
+
+Требования:
+
+1) **Создать новый endpoint backend’а:**
+   POST /api/ai-compatibility/calc
+   Вход: { userId: number, vacancies: Job[] }
+   Выход: массив объектов:
+     { vacancyId, score, color, explanation }
+
+2) **Реализовать логику вычисления совместимости через OpenRouter**.
+   Использовать тот же OpenRouter API, что и generateCoverLetter.
+   Но написать новый промпт:
+   ---
+   “Проанализируй РЕЗЮМЕ и ВАКАНСИЮ, оцени степень совместимости по шкале 0–100%.
+    Основывайся только на информации из резюме. 
+    Верни JSON:
+    { score: number (0–100), explanation: string (1–2 предложения) }”
+   ---
+
+3) **Маппинг score → цвет**:
+   score 75–100 → “green”
+   score 40–74 → “yellow”
+   score 0–39 → “red”
+
+4) **Сделать кеширование результатов в базе**:
+   Новая таблица aiCompatibility:
+     id
+     userId
+     vacancyId
+     score
+     color
+     explanation
+     createdAt
+   В storage.ts реализовать методы:
+     saveCompatibility(userId, vacancyId, data)
+     getCompatibility(userId, vacancyId)
+     deleteCompatibility(userId, vacancyId)
+
+5) **Включить фоновый расчёт при загрузке вакансий**:
+   Когда запрашиваются /api/hh/jobs или /api/jobs/unswiped:
+   — после адаптации вакансий сделать массовый вызов calcCompatibility() для этих вакансий,
+   — пропускать вакансии, для которых есть свежий кеш,
+   — limit concurrency = 3.
+
+6) **Удалять совместимость после отклика или свайпа**.
+   В endpoints:
+   — POST /api/swipes
+   — POST /api/apply/async  
+   → добавить вызов deleteCompatibility(userId, vacancyId).
+
+7) **Обновить фронтенд карточки вакансии**:
+   Добавить поле compatibility:
+     { score, color, explanation }
+   Отображать:
+     — цветной бейдж в углу карточки (фон цвет, текст score%),
+     — при клике показывать маленькое описание (“Почему подходит/не подходит”).
+
+8) **Сделать код полностью рабочим**:
+   — учесть правильные пути импорта,
+   — не ломать текущие руты,
+   — оптимизировать промпты,
+   — логировать ошибки,
+   — написать аккуратный TS-код,
+   — все изменения внести автоматически во все файлы: openrouter.ts, storage.ts, schema, routes.ts, frontend.
+
+9) **После реализации — сгенерировать миграцию и сообщить мне список всех изменённых файлов.**
+
+Сейчас проанализируй проект, найди подходящие места для интеграции фичи и начни менять код. Если найдёшь архитектурные ошибки — исправляй.

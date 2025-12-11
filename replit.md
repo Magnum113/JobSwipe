@@ -102,6 +102,13 @@ Preferred communication style: Simple, everyday language.
   - `hh_negotiation_id` - HH.ru negotiation ID (for real applications)
   - `status` - success/failed/demo
   - `error_reason` - Error message if application failed
+- `ai_compatibility` table: Caches AI-calculated compatibility scores
+  - `user_id` - References users
+  - `vacancy_id` - HH.ru vacancy ID
+  - `score` - Compatibility score (0-100)
+  - `color` - Badge color ("green", "yellow", "red")
+  - `explanation` - AI-generated explanation in Russian
+  - `created_at` - Timestamp for cache invalidation
 
 ### HH.ru OAuth Integration
 
@@ -136,10 +143,12 @@ Preferred communication style: Simple, everyday language.
 ### External Dependencies
 
 **AI Integration**
-- **OpenRouter API** for cover letter generation
-  - Model: `openai/gpt-4.1-mini`
+- **OpenRouter API** for cover letter generation and compatibility scoring
+  - Model for cover letters: `openai/gpt-4.1-mini`
+  - Model for compatibility: `openai/gpt-4o-mini` (faster, cheaper)
   - API key stored in Replit Secrets as `OPENROUTER_API_KEY`
   - Generates contextual cover letters based on resume and job description
+  - Calculates compatibility scores (0-100) with explanation for each vacancy
 
 **HH.ru API**
 - OAuth 2.0 for authentication
@@ -163,6 +172,16 @@ Preferred communication style: Simple, everyday language.
 - **Lucide React** for consistent icon system throughout the UI
 
 ## Recent Changes
+
+- **2025-12-11**: Added AI Compatibility scoring to vacancy cards
+  - **Backend**: `POST /api/ai-compatibility/calc` endpoint calculates compatibility scores
+  - **Model**: Uses `openai/gpt-4o-mini` via OpenRouter (faster and cheaper than GPT-4.1-mini)
+  - **UI**: Sparkle badge in top-left corner of vacancy cards showing score (0-100)
+  - **Colors**: Green (70+), Yellow (40-69), Red (0-39)
+  - **Tooltip**: Shows AI explanation when hovering over the badge
+  - **Caching**: Scores are cached in `ai_compatibility` table to avoid recalculation
+  - **Race Protection**: Search token prevents stale compatibility data from overwriting current results
+  - **Storage Methods**: `getCompatibility()`, `saveCompatibility()`, `deleteCompatibility()`
 
 - **2025-12-11**: Fixed generateCoverLetter is not defined error
   - **Root Cause**: Removed conflicting `server/gemini.ts` file that exported duplicate `generateCoverLetter` function
