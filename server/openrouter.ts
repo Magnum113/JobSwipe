@@ -217,15 +217,15 @@ ${resume.slice(0, 3000)}
         "X-Title": "JobSwipe"
       },
       body: JSON.stringify({
-        model: "openai/gpt-oss-20b:free",
+        model: "openai/gpt-4o-mini",
         messages: [
           {
             role: "system",
-            content: "Ты — HR-аналитик, оценивающий совместимость кандидата с вакансией. Отвечай только JSON."
+            content: "Ты — HR-аналитик, оценивающий совместимость кандидата с вакансией. Отвечай ТОЛЬКО валидным JSON без markdown, без ```json, без пояснений."
           },
           { role: "user", content: prompt }
         ],
-        temperature: 0.2,
+        temperature: 0.1,
         max_tokens: 200
       })
     });
