@@ -304,6 +304,8 @@ export const VacancyCard = forwardRef<VacancyCardRef, VacancyCardProps>(
           </motion.div>
 
           <CardContent className="p-0 h-full flex flex-col relative z-10">
+            {compatibility && <CompatibilityBadge compatibility={compatibility} />}
+            
             <div className="h-20 bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 flex items-center justify-center relative overflow-hidden">
               {!logoError && job.logoUrl ? (
                 <img 
@@ -327,8 +329,6 @@ export const VacancyCard = forwardRef<VacancyCardRef, VacancyCardProps>(
                   <ExternalLink className="w-4 h-4 text-indigo-600" />
                 </a>
               )}
-              
-              {compatibility && <CompatibilityBadge compatibility={compatibility} />}
             </div>
 
             <div className="px-6 py-5 flex-1 flex flex-col gap-4">
