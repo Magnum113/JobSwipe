@@ -311,12 +311,12 @@ export const VacancyCard = forwardRef<VacancyCardRef, VacancyCardProps>(
           <CardContent className="p-0 h-full flex flex-col relative z-10">
             {compatibility && <CompatibilityBadge compatibility={compatibility} />}
             
-            <div className="h-20 bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 flex items-center justify-center relative overflow-hidden">
+            <div className="h-20 min-h-20 max-h-20 flex-shrink-0 bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 flex items-center justify-center relative overflow-hidden">
               {!logoError && job.logoUrl ? (
                 <img 
                   src={job.logoUrl} 
                   alt={job.company} 
-                  className="max-h-12 max-w-[100px] object-contain" 
+                  className="h-12 max-w-[120px] object-contain" 
                   onError={() => setLogoError(true)} 
                 />
               ) : (
