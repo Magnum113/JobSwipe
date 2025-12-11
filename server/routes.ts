@@ -1,5 +1,6 @@
+
 import type { Express } from "express";
-import { getLastGigachatPrompt } from "./gigachat"; // путь подкорректируй под свою структуру
+import { getLastOpenRouterPrompt } from "./openrouter"; // путь подкорректируй под свою структуру
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
@@ -7,7 +8,6 @@ import { users, resumes, applications } from "@shared/schema";
 import { insertJobSchema, insertSwipeSchema, insertApplicationSchema, type Job, type HHJob, type HHJobsResponse } from "@shared/schema";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
-import { generateCoverLetter, getAccessToken } from "./gigachat";
 import {
   getAuthUrl,
   exchangeCodeForTokens,
@@ -177,27 +177,6 @@ export async function registerRoutes(
   
  
 
-  // Test GigaChat integration
-  app.get("/api/test-gigachat", async (_req, res) => {
-    try {
-      const token = await getAccessToken();
-      if (!token) {
-        return res.json({ ok: false, error: "Token failed" });
-      }
-
-      const response = await fetch("https://gigachat.devices.sberbank.ru/api/v1/models", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json"
-        }
-      });
-
-      const data = await response.text();
-      res.send(data);
-    } catch (err: any) {
-      res.status(500).json({ ok: false, error: err.message });
-    }
-  });
 
   // HH.ru API - Get all areas (regions) with caching
   app.get("/api/hh/areas", async (_req, res) => {
@@ -1276,16 +1255,11 @@ coverLetter = await generateCoverLetter(resumeTextFinal, vacancy);
     }
   });
   app.get("/api/debug/last-prompt", (_req, res) => {
-    const prompt = getLastGigachatPrompt();
+  const prompt = getLastOpenRouterPrompt();
 
-    if (!prompt) {
-      res.setHeader("Content-Type", "text/plain; charset=utf-8");
-      return res.status(200).send("NO PROMPT YET");
-    }
-
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    return res.status(200).send(prompt);
-  });
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  return res.status(200).send(prompt || "NO PROMPT YET");
+});
 
   return httpServer;
 }
