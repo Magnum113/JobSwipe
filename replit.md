@@ -61,13 +61,13 @@ Preferred communication style: Simple, everyday language.
 - `/api/jobs/unswiped` - Fetches local jobs not yet swiped (fallback/seed data)
 - `/api/resume` - GET/POST endpoints for manual resume management
 - `/api/applications` - Local application history tracking
-- `/api/cover-letter/generate` - AI-powered cover letter generation using Google Gemini
+- `/api/cover-letter/generate` - AI-powered cover letter generation using OpenRouter (GPT-4.1-mini)
 
 **Server Organization**
 - `/server/routes.ts` - Centralized route registration
 - `/server/hhAuth.ts` - HH.ru OAuth module (token exchange, refresh, resume API, apply API)
 - `/server/storage.ts` - Database abstraction layer (IStorage interface)
-- `/server/gemini.ts` - Google Gemini API integration for AI cover letters
+- `/server/openrouter.ts` - OpenRouter API integration for AI cover letters (GPT-4.1-mini model)
 - `/server/static.ts` - Static file serving for production builds
 
 ### Data Layer
@@ -136,9 +136,9 @@ Preferred communication style: Simple, everyday language.
 ### External Dependencies
 
 **AI Integration**
-- **Google Gemini API** for cover letter generation
-  - Model: `gemini-1.5-flash`
-  - API key stored in Replit Secrets as `GEMINI_API_KEY`
+- **OpenRouter API** for cover letter generation
+  - Model: `openai/gpt-4.1-mini`
+  - API key stored in Replit Secrets as `OPENROUTER_API_KEY`
   - Generates contextual cover letters based on resume and job description
 
 **HH.ru API**
@@ -148,7 +148,7 @@ Preferred communication style: Simple, everyday language.
 
 **Required Environment Variables:**
 - `DATABASE_URL` - PostgreSQL connection string
-- `GEMINI_API_KEY` - Google Gemini API key
+- `OPENROUTER_API_KEY` - OpenRouter API key
 - `HH_CLIENT_ID` - HH.ru OAuth Client ID
 - `HH_CLIENT_SECRET` - HH.ru OAuth Client Secret
 - `SESSION_SECRET` - Session encryption key
@@ -163,6 +163,11 @@ Preferred communication style: Simple, everyday language.
 - **Lucide React** for consistent icon system throughout the UI
 
 ## Recent Changes
+
+- **2025-12-11**: Fixed generateCoverLetter is not defined error
+  - **Root Cause**: Removed conflicting `server/gemini.ts` file that exported duplicate `generateCoverLetter` function
+  - **Resolution**: Now using only `server/openrouter.ts` for AI cover letter generation (GPT-4.1-mini via OpenRouter)
+  - **Verified**: Both `/api/cover-letter/generate` and `/api/apply/async` endpoints work correctly in production build
 
 - **2025-12-08**: Multi-region filter for vacancies
   - **New Endpoint**: `/api/hh/areas` fetches all HH.ru regions with 1-hour cache
