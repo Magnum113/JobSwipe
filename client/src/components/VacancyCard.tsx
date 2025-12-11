@@ -45,9 +45,13 @@ function CompatibilityBadge({ compatibility }: { compatibility: CompatibilityRes
       <motion.button
         onClick={(e) => {
           e.stopPropagation();
+          e.preventDefault();
           setIsOpen(true);
         }}
-        className={`absolute top-3 left-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full shadow-lg cursor-pointer bg-gradient-to-r ${getGradient()} text-white border border-white/20 backdrop-blur-sm`}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        className={`absolute top-3 left-3 z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-full shadow-lg cursor-pointer bg-gradient-to-r ${getGradient()} text-white border border-white/20 backdrop-blur-sm`}
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         data-testid="badge-compatibility"
