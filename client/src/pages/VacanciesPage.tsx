@@ -467,8 +467,25 @@ export default function VacanciesPage() {
     setCurrentIndex(prev => prev + 1);
     setExpandedVacancy(null);
 
+    // Fetch compatibility for the next job in queue (job at position 5)
+    const nextJobIndex = currentIndex + 5;
+    const nextJob = jobs[nextJobIndex];
+    if (nextJob && userId && !compatibilityMap.has(nextJob.id)) {
+      const currentToken = searchTokenRef.current;
+      fetchCompatibility(userId, [nextJob])
+        .then(results => {
+          if (currentToken !== searchTokenRef.current) return;
+          setCompatibilityMap(prev => {
+            const newMap = new Map(prev);
+            results.forEach(r => newMap.set(r.vacancyId, r));
+            return newMap;
+          });
+        })
+        .catch(err => console.error("Failed to fetch next compatibility:", err));
+    }
+
     setTimeout(() => setIsSwiping(false), 300);
-  }, [isSwiping, currentJobs, currentIndex, resume, queryClient, authStatus, userId]);
+  }, [isSwiping, currentJobs, currentIndex, resume, queryClient, authStatus, userId, jobs, compatibilityMap]);
 
   const loadMoreJobs = useCallback(async () => {
     if (!hasMore || isLoadingMore || !appliedFilters) return;

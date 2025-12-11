@@ -1,9 +1,8 @@
 import { useRef, useCallback, useEffect, useState, forwardRef, useImperativeHandle } from "react";
-import { motion, PanInfo, useMotionValue, useTransform, useAnimation } from "framer-motion";
-import { Building2, Wallet, MapPin, Clock, ExternalLink, Sparkles } from "lucide-react";
+import { motion, PanInfo, useMotionValue, useTransform, useAnimation, AnimatePresence } from "framer-motion";
+import { Building2, Wallet, MapPin, Clock, ExternalLink, Zap, X, Brain, FileText, Target, TrendingUp } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { HHJob, CompatibilityResult } from "@shared/schema";
 
 interface VacancyCardProps {
@@ -25,11 +24,128 @@ const employmentTypeLabels: Record<string, string> = {
   "part-time": "Частичная",
 };
 
-const compatibilityColors = {
-  green: "bg-green-500",
-  yellow: "bg-yellow-500",
-  red: "bg-red-500",
-};
+function CompatibilityBadge({ compatibility }: { compatibility: CompatibilityResult }) {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  const getGradient = () => {
+    if (compatibility.score >= 70) return "from-emerald-400 to-green-500";
+    if (compatibility.score >= 40) return "from-amber-400 to-orange-500";
+    return "from-rose-400 to-red-500";
+  };
+  
+  const getLabel = () => {
+    if (compatibility.score >= 70) return "Отличное совпадение";
+    if (compatibility.score >= 40) return "Частичное совпадение";
+    return "Низкое совпадение";
+  };
+
+  return (
+    <>
+      <motion.button
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen(true);
+        }}
+        className={`absolute top-3 left-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full shadow-lg cursor-pointer bg-gradient-to-r ${getGradient()} text-white border border-white/20 backdrop-blur-sm`}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        data-testid="badge-compatibility"
+      >
+        <Zap className="w-3.5 h-3.5" />
+        <span className="font-bold text-sm">{compatibility.score}%</span>
+      </motion.button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm rounded-[28px]"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsOpen(false);
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-white rounded-2xl shadow-2xl p-5 max-w-[320px] w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className={`p-2 rounded-xl bg-gradient-to-r ${getGradient()}`}>
+                    <Brain className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900">AI-совместимость</h3>
+                    <p className="text-xs text-gray-500">{getLabel()}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsOpen(false);
+                  }}
+                  className="p-1 rounded-full hover:bg-gray-100 transition-colors"
+                >
+                  <X className="w-4 h-4 text-gray-400" />
+                </button>
+              </div>
+
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-gray-600">Совпадение</span>
+                  <span className={`text-2xl font-bold bg-gradient-to-r ${getGradient()} bg-clip-text text-transparent`}>
+                    {compatibility.score}%
+                  </span>
+                </div>
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${compatibility.score}%` }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
+                    className={`h-full bg-gradient-to-r ${getGradient()}`}
+                  />
+                </div>
+              </div>
+
+              <div className="bg-gray-50 rounded-xl p-3 mb-4">
+                <p className="text-sm text-gray-700 leading-relaxed">
+                  {compatibility.explanation}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Что анализирует AI:</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex items-center gap-2 text-xs text-gray-600">
+                    <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Навыки из резюме</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-600">
+                    <Target className="w-3.5 h-3.5 text-purple-500" />
+                    <span>Требования вакансии</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-600">
+                    <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Опыт работы</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-600">
+                    <Brain className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Ключевые слова</span>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
 
 export const VacancyCard = forwardRef<VacancyCardRef, VacancyCardProps>(
   ({ job, onSwipe, onExpand, active, compatibility }, ref) => {
@@ -208,25 +324,7 @@ export const VacancyCard = forwardRef<VacancyCardRef, VacancyCardProps>(
                 </a>
               )}
               
-              {compatibility && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div 
-                        className={`absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full shadow-lg cursor-help ${compatibilityColors[compatibility.color]} text-white`}
-                        onClick={(e) => e.stopPropagation()}
-                        data-testid="badge-compatibility"
-                      >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span className="font-bold text-sm">{compatibility.score}%</span>
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="max-w-[250px] text-center">
-                      <p className="text-sm">{compatibility.explanation}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
+              {compatibility && <CompatibilityBadge compatibility={compatibility} />}
             </div>
 
             <div className="px-6 py-5 flex-1 flex flex-col gap-4">
