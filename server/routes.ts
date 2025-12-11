@@ -1,6 +1,6 @@
 
 import type { Express } from "express";
-import { getLastOpenRouterPrompt } from "./openrouter"; // путь подкорректируй под свою структуру
+import { getLastOpenRouterPrompt, generateCoverLetter } from "./openrouter"; // путь подкорректируй под свою структуру
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
