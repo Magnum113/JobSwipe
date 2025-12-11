@@ -217,16 +217,16 @@ ${resume.slice(0, 3000)}
         "X-Title": "JobSwipe"
       },
       body: JSON.stringify({
-        model: "openai/gpt-4o-mini",
+        model: "openai/gpt-oss-20b:free",
         messages: [
           {
             role: "system",
-            content: "Ты — HR-аналитик, оценивающий совместимость кандидата с вакансией. Отвечай ТОЛЬКО валидным JSON без markdown, без ```json, без пояснений."
+            content: "Ты — HR-аналитик. Отвечай ТОЛЬКО JSON: {\"score\": число, \"explanation\": \"текст\"}"
           },
           { role: "user", content: prompt }
         ],
         temperature: 0.1,
-        max_tokens: 200
+        max_tokens: 300
       })
     });
 
@@ -238,19 +238,41 @@ ${resume.slice(0, 3000)}
     const data = await response.json();
     const text = data?.choices?.[0]?.message?.content || "";
     
-    // Parse JSON from response
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error("[Compatibility] No JSON in response:", text);
-      return { vacancyId, score: 50, color: "yellow", explanation: "Не удалось распарсить ответ." };
+    // Try to parse JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
+    if (jsonMatch) {
+      try {
+        const parsed: CompatibilityResponse = JSON.parse(jsonMatch[0]);
+        const score = Math.max(0, Math.min(100, Math.round(parsed.score)));
+        const color = scoreToColor(score);
+        const explanation = sanitize(parsed.explanation || "Анализ выполнен.");
+        return { vacancyId, score, color, explanation };
+      } catch (parseErr) {
+        console.log("[Compatibility] JSON parse failed, trying fallback extraction");
+      }
     }
 
-    const parsed: CompatibilityResponse = JSON.parse(jsonMatch[0]);
-    const score = Math.max(0, Math.min(100, Math.round(parsed.score)));
-    const color = scoreToColor(score);
-    const explanation = sanitize(parsed.explanation || "");
+    // Fallback: extract score from text using regex
+    const scoreMatch = text.match(/["']?score["']?\s*[:=]\s*(\d+)/i) || 
+                       text.match(/(\d{1,3})\s*[%％]/) ||
+                       text.match(/совместимость[^\d]*(\d{1,3})/i) ||
+                       text.match(/оценк[аи][^\d]*(\d{1,3})/i);
+    
+    if (scoreMatch) {
+      const score = Math.max(0, Math.min(100, parseInt(scoreMatch[1], 10)));
+      const color = scoreToColor(score);
+      
+      // Try to extract explanation
+      const explMatch = text.match(/["']?explanation["']?\s*[:=]\s*["']([^"']+)["']/i) ||
+                        text.match(/потому что[:\s]*(.+?)(?:\.|$)/i) ||
+                        text.match(/так как[:\s]*(.+?)(?:\.|$)/i);
+      const explanation = explMatch ? sanitize(explMatch[1]) : "Анализ на основе навыков и опыта.";
+      
+      return { vacancyId, score, color, explanation };
+    }
 
-    return { vacancyId, score, color, explanation };
+    console.error("[Compatibility] Could not extract score from:", text.slice(0, 200));
+    return { vacancyId, score: 50, color: "yellow", explanation: "Не удалось извлечь оценку совместимости." };
   } catch (err) {
     console.error("[Compatibility] Error:", err);
     return { vacancyId, score: 50, color: "yellow", explanation: "Ошибка при расчёте совместимости." };
